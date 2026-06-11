@@ -15,4 +15,5 @@
 
 # Fase 2
 
-- Necesito agregar un nuevo nodo que me permita ahregar (dias, horas, minutos, segunods) una fecha otra ya generada dentro del wokflow
+- Necesito agregar un nuevo nodo que me permita agregar (dias, horas, minutos, segundos) una fecha a otra ya generada dentro del wokflow
+- Necesito agregar un nuevo nodo que me permita restar (dias, horas, minutos, segundos) una fecha a otra ya generada dentro del wokflow

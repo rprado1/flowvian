@@ -4,10 +4,11 @@
 
 // Node registry (populated after scripts load)
 const NODE_DEFS = {
-  scheduler:            SchedulerNode,
-  set_variables:        SetVariablesNode,
-  get_current_date_utc: GetCurrentDateUTCNode,
-  add_time_to_date:     AddTimeToDateNode,
+  scheduler:               SchedulerNode,
+  set_variables:           SetVariablesNode,
+  get_current_date_utc:    GetCurrentDateUTCNode,
+  add_time_to_date:        AddTimeToDateNode,
+  subtract_time_from_date: SubtractTimeFromDateNode,
 };
 
 // ============================================================
