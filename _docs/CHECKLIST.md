@@ -1,0 +1,34 @@
+# CHECKLIST de Requerimientos
+
+Seguimiento del estado de implementación de cada requerimiento definido en `REQUIREMENTS.md`.
+
+---
+
+| # | Requerimiento | Estado | Notas |
+|---|---|---|---|
+| 1 | Aplicación que permita crear workflows empaquetados en `.exe` de Windows | ✅ Completado | `POST /api/workflows/{id}/build` genera el `.exe` via PyInstaller `--onefile` |
+| 2 | Debe tener una interfaz web | ✅ Completado | SPA en `app/static/index.html`. Flask sirve en `http://localhost:5000` |
+| 3 | Debe ser en Python | ✅ Completado | Backend Flask (Python 3.9+). El código generado también es Python puro |
+| 4 | No usar librerías pesadas; usar stdlib en lo posible | ✅ Completado | Solo dos dependencias externas: `flask` (servidor) y `pyinstaller` (compilación). BD con `sqlite3` stdlib, fechas con `datetime` stdlib |
+| 5 | El empaquetado debe ser ligero | ✅ Completado | PyInstaller `--onefile`. El script generado solo importa `datetime`, `time` y `os` — sin dependencias de terceros en el EXE |
+| 6 | Interfaz similar a n8n pero sin todas sus funcionalidades | ✅ Completado | Canvas drag-and-drop con Drawflow 0.0.59 (vendored, ~30kb). Paleta de nodos, conexiones visuales, panel de propiedades |
+| 7 | Nodos iniciales: Scheduler, Set Variables, Get Current Date UTC | ✅ Completado | `app/nodes/scheduler.py`, `app/nodes/set_variables.py`, `app/nodes/get_current_date.py` + sus contrapartes JS en `app/static/js/nodes/` |
+| 8 | Base de datos SQLite | ✅ Completado | `data/main.db` (registro de workflows) + `data/{id}.db` por workflow, usando `sqlite3` de stdlib |
+| 9 | Cada workflow debe tener un botón para generar el `.exe` | ✅ Completado | Botón **Generate EXE** en la barra superior. Muestra log de compilación y enlace de descarga al terminar |
+| 10 | Por el momento no existen sub-workflows | ✅ Completado | No hay concepto de sub-workflow en el modelo de datos ni en el generador de código |
+| 11 | La configuración de los nodos debe transformarse a código Python y compilarse con PyInstaller | ✅ Completado | `app/codegen/generator.py` convierte el grafo JSON → script `.py` autónomo via topological sort. PyInstaller compila ese script |
+| 12 | Cada workflow tendrá su propio archivo SQLite | ✅ Completado | `app/db/manager.py` crea `data/{workflow_id}.db` al crear cada workflow; se elimina al borrar el workflow |
+
+---
+
+## Resumen
+
+| Estado | Cantidad |
+|---|---|
+| ✅ Completado | 12 |
+| 🔄 En progreso | 0 |
+| ⏳ Pendiente | 0 |
+
+---
+
+_Última actualización: 2026-06-11_
