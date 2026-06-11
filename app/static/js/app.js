@@ -7,6 +7,7 @@ const NODE_DEFS = {
   scheduler:            SchedulerNode,
   set_variables:        SetVariablesNode,
   get_current_date_utc: GetCurrentDateUTCNode,
+  add_time_to_date:     AddTimeToDateNode,
 };
 
 // ============================================================
@@ -322,7 +323,7 @@ async function previewScript() {
 }
 
 // ============================================================
-// Build EXE
+// Build EXE  (async polling)
 // ============================================================
 async function buildExe() {
   if (!currentWfId) return toast('Open a workflow first', 'info');
@@ -333,18 +334,66 @@ async function buildExe() {
   btn.textContent = 'Building…';
   toast('Building .exe — this may take a minute…', 'info');
 
+  // 1. Start the build job (returns immediately with job_id)
+  let jobId;
   try {
     const data = await api('POST', `/api/workflows/${currentWfId}/build`);
-    btn.disabled = false;
-    btn.textContent = 'Generate EXE';
-    openBuildLogModal('Build Successful ✓', data.log, true, data.download_url);
-    toast('EXE built successfully!', 'success');
+    jobId = data.job_id;
   } catch (e) {
     btn.disabled = false;
-    btn.textContent = 'Generate EXE';
-    openBuildLogModal('Build Failed', e.detail || e.message, false);
+    btn.textContent = '⚙ Generate EXE';
+    const detail = `Could not start build: ${e.message}\n\n` +
+                   'Check the terminal where you ran "python run.py" for details.';
+    openBuildLogModal('Build Failed', detail, false);
     toast('Build failed: ' + e.message, 'error');
+    return;
   }
+
+  // 2. Poll status every 2 seconds (max 5 min = 150 polls)
+  const MAX_POLLS = 150;
+  for (let i = 0; i < MAX_POLLS; i++) {
+    await _sleep(2000);
+    let status;
+    try {
+      status = await api('GET', `/api/workflows/${currentWfId}/build/status/${jobId}`);
+    } catch (e) {
+      // Network error while polling — stop
+      btn.disabled = false;
+      btn.textContent = '⚙ Generate EXE';
+      openBuildLogModal('Build Failed',
+        `Network error while polling build status: ${e.message}\n\n` +
+        'Check the terminal where you ran "python run.py" for details.', false);
+      toast('Build failed: ' + e.message, 'error');
+      return;
+    }
+
+    if (status.status === 'running') continue;
+
+    btn.disabled = false;
+    btn.textContent = '⚙ Generate EXE';
+
+    if (status.status === 'success') {
+      openBuildLogModal('Build Successful ✓', status.log, true, status.download_url);
+      toast('EXE built successfully!', 'success');
+    } else {
+      const detail = [status.error, status.log].filter(Boolean).join('\n\n');
+      openBuildLogModal('Build Failed', detail, false);
+      toast('Build failed: ' + (status.error || 'unknown error'), 'error');
+    }
+    return;
+  }
+
+  // Timed out on client side
+  btn.disabled = false;
+  btn.textContent = '⚙ Generate EXE';
+  openBuildLogModal('Build Timed Out',
+    'The build is taking longer than 5 minutes.\n' +
+    'Check the terminal where you ran "python run.py" for PyInstaller output.', false);
+  toast('Build timed out', 'error');
+}
+
+function _sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ============================================================

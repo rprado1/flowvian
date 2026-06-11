@@ -1,6 +1,10 @@
+from __future__ import annotations
+
+import json
 import os
 import subprocess
-import tempfile
+import sys
+import uuid
 
 from flask import Blueprint, jsonify, current_app, send_file
 from app.db.manager import get_workflow_meta, get_workflow_graph
@@ -17,23 +21,56 @@ def output_dir():
     return current_app.config["OUTPUT_DIR"]
 
 
+# ---------------------------------------------------------------------------
+# Job persistence helpers  (files on disk — survive multi-process reloader)
+# ---------------------------------------------------------------------------
+
+def _job_path(wf_output_dir: str, job_id: str) -> str:
+    return os.path.join(wf_output_dir, f"job_{job_id}.json")
+
+
+def _write_job(wf_output_dir: str, job_id: str, payload: dict) -> None:
+    path = _job_path(wf_output_dir, job_id)
+    tmp  = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+    os.replace(tmp, path)   # atomic on same filesystem
+
+
+def _read_job(wf_output_dir: str, job_id: str) -> dict | None:
+    path = _job_path(wf_output_dir, job_id)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Validate
+# ---------------------------------------------------------------------------
+
 @builder_bp.route("/<workflow_id>/validate", methods=["POST"])
 def validate(workflow_id):
-    """Validate the workflow graph without building."""
     meta = get_workflow_meta(data_dir(), workflow_id)
     if not meta:
         return jsonify({"error": "not found"}), 404
 
-    graph = get_workflow_graph(data_dir(), workflow_id)
+    graph  = get_workflow_graph(data_dir(), workflow_id)
     errors = validate_graph(graph["nodes"], graph["edges"])
     if errors:
         return jsonify({"valid": False, "errors": errors}), 422
     return jsonify({"valid": True, "errors": []})
 
 
+# ---------------------------------------------------------------------------
+# Preview
+# ---------------------------------------------------------------------------
+
 @builder_bp.route("/<workflow_id>/preview", methods=["POST"])
 def preview(workflow_id):
-    """Return the generated Python source without compiling."""
     meta = get_workflow_meta(data_dir(), workflow_id)
     if not meta:
         return jsonify({"error": "not found"}), 404
@@ -47,40 +84,112 @@ def preview(workflow_id):
     return jsonify({"script": script})
 
 
+# ---------------------------------------------------------------------------
+# Build  (async — returns job_id immediately)
+# ---------------------------------------------------------------------------
+
 @builder_bp.route("/<workflow_id>/build", methods=["POST"])
 def build(workflow_id):
-    """
-    Generate Python script and compile it to a Windows .exe using PyInstaller.
-    Returns JSON with the build log and, on success, a download_url.
-    """
     meta = get_workflow_meta(data_dir(), workflow_id)
     if not meta:
         return jsonify({"error": "not found"}), 404
 
     graph = get_workflow_graph(data_dir(), workflow_id)
 
-    # 1. Generate Python source
     try:
         script = generate_script(meta["name"], graph["nodes"], graph["edges"])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 
-    # 2. Write script to a temp file inside output_dir
     wf_output_dir = os.path.join(output_dir(), workflow_id)
     os.makedirs(wf_output_dir, exist_ok=True)
 
-    safe_name = _safe_filename(meta["name"])
+    safe_name   = _safe_filename(meta["name"])
     script_path = os.path.join(wf_output_dir, f"{safe_name}.py")
     with open(script_path, "w", encoding="utf-8") as f:
         f.write(script)
 
-    # 3. Run PyInstaller
+    job_id   = uuid.uuid4().hex
+    job_file = _job_path(wf_output_dir, job_id)
+    _write_job(wf_output_dir, job_id, {"status": "running", "log": "", "error": None})
+
+    dist_dir = os.path.join(wf_output_dir, "dist")
+    work_dir = os.path.join(wf_output_dir, "build")
+    spec_dir = wf_output_dir
+
+    # Launch build_worker as a completely independent process so it survives
+    # the Werkzeug reloader restarting the Flask worker.
+    subprocess.Popen(
+        [
+            sys.executable,
+            os.path.join(os.path.dirname(__file__), "..", "build_worker.py"),
+            job_file, script_path, safe_name, dist_dir, work_dir, spec_dir,
+        ],
+        # Detach from parent's stdin/stdout so the process is truly independent
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+    )
+
+    return jsonify({"job_id": job_id}), 202
+
+
+@builder_bp.route("/<workflow_id>/build/status/<job_id>", methods=["GET"])
+def build_status(workflow_id, job_id):
+    wf_output_dir = os.path.join(output_dir(), workflow_id)
+    job = _read_job(wf_output_dir, job_id)
+
+    if job is None:
+        return jsonify({"error": "job not found"}), 404
+
+    if job["status"] == "running":
+        return jsonify({"status": "running"})
+
+    if job["status"] == "error":
+        return jsonify({
+            "status": "error",
+            "error":  job["error"],
+            "log":    job["log"],
+        })
+
+    return jsonify({
+        "status":       "success",
+        "log":          job["log"],
+        "exe_name":     job["exe_name"],
+        "download_url": f"/api/workflows/{workflow_id}/download",
+    })
+
+
+# ---------------------------------------------------------------------------
+# Download
+# ---------------------------------------------------------------------------
+
+@builder_bp.route("/<workflow_id>/download", methods=["GET"])
+def download(workflow_id):
+    meta = get_workflow_meta(data_dir(), workflow_id)
+    if not meta:
+        return jsonify({"error": "not found"}), 404
+
+    safe_name = _safe_filename(meta["name"])
+    exe_path  = os.path.join(output_dir(), workflow_id, "dist", f"{safe_name}.exe")
+
+    if not os.path.exists(exe_path):
+        return jsonify({"error": "No compiled .exe found — build the workflow first"}), 404
+
+    return send_file(exe_path, as_attachment=True, download_name=f"{safe_name}.exe")
+
+
+# ---------------------------------------------------------------------------
+
+def _run_build(job_id: str, workflow_id: str, safe_name: str,
+               script_path: str, wf_output_dir: str) -> None:
     dist_dir = os.path.join(wf_output_dir, "dist")
     work_dir = os.path.join(wf_output_dir, "build")
     spec_dir = wf_output_dir
 
     cmd = [
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--onefile",
         "--noconfirm",
         "--distpath", dist_dir,
@@ -91,48 +200,48 @@ def build(workflow_id):
     ]
 
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=300,  # 5 minutes max
-        )
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     except subprocess.TimeoutExpired:
-        return jsonify({"error": "PyInstaller timed out (>5 min)"}), 500
-    except FileNotFoundError:
-        return jsonify({"error": "pyinstaller not found — run: pip install pyinstaller"}), 500
+        _write_job(wf_output_dir, job_id, {
+            "status": "error",
+            "error":  "PyInstaller timed out (>5 min)",
+            "log":    "The build exceeded the 5-minute limit and was killed.\n"
+                      f"Run manually: {sys.executable} -m PyInstaller --onefile {script_path}",
+        })
+        return
+    except Exception as exc:
+        _write_job(wf_output_dir, job_id, {
+            "status": "error",
+            "error":  f"Unexpected error: {exc}",
+            "log":    traceback.format_exc(),
+        })
+        return
 
-    log = result.stdout + result.stderr
+    log = result.stderr + result.stdout
 
     if result.returncode != 0:
-        return jsonify({"error": "PyInstaller failed", "log": log}), 500
+        _write_job(wf_output_dir, job_id, {
+            "status": "error",
+            "error":  f"PyInstaller exited with code {result.returncode}",
+            "log":    log,
+        })
+        return
 
     exe_path = os.path.join(dist_dir, f"{safe_name}.exe")
     if not os.path.exists(exe_path):
-        return jsonify({"error": "Build succeeded but .exe not found", "log": log}), 500
+        _write_job(wf_output_dir, job_id, {
+            "status": "error",
+            "error":  "Build reported success but .exe was not found",
+            "log":    log + f"\n\nExpected: {exe_path}",
+        })
+        return
 
-    return jsonify({
-        "ok": True,
-        "log": log,
+    _write_job(wf_output_dir, job_id, {
+        "status":   "success",
+        "log":      log,
         "exe_name": f"{safe_name}.exe",
-        "download_url": f"/api/workflows/{workflow_id}/download",
+        "error":    None,
     })
-
-
-@builder_bp.route("/<workflow_id>/download", methods=["GET"])
-def download(workflow_id):
-    """Download the compiled .exe for a workflow."""
-    meta = get_workflow_meta(data_dir(), workflow_id)
-    if not meta:
-        return jsonify({"error": "not found"}), 404
-
-    safe_name = _safe_filename(meta["name"])
-    exe_path = os.path.join(output_dir(), workflow_id, "dist", f"{safe_name}.exe")
-
-    if not os.path.exists(exe_path):
-        return jsonify({"error": "No compiled .exe found — build the workflow first"}), 404
-
-    return send_file(exe_path, as_attachment=True, download_name=f"{safe_name}.exe")
 
 
 # ---------------------------------------------------------------------------
@@ -140,6 +249,5 @@ def download(workflow_id):
 # ---------------------------------------------------------------------------
 
 def _safe_filename(name: str) -> str:
-    """Convert a workflow name to a safe filename (no spaces or special chars)."""
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
     return safe.strip("_") or "workflow"

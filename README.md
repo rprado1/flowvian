@@ -1,34 +1,34 @@
 # WorkflowEXE Builder
 
-Herramienta visual para crear workflows y compilarlos como ejecutables `.exe` de Windows.
+Visual tool for creating workflows and compiling them as Windows `.exe` executables.
 
-Diseña el flujo arrastrando nodos en un canvas estilo n8n, configura cada paso y genera un `.exe` autónomo con un clic.
+Design the flow by dragging nodes onto an n8n-style canvas, configure each step, and generate a standalone `.exe` with one click.
 
 ---
 
-## Requisitos
+## Requirements
 
 - Python 3.9+
-- Windows (el `.exe` generado es solo para Windows)
+- Windows (the generated `.exe` is Windows-only)
 
 ---
 
-## Instalación
+## Installation
 
-**1. Clonar el repositorio y entrar al directorio:**
+**1. Clone the repository and enter the directory:**
 
 ```bash
-git clone <url-del-repo>
+git clone <repo-url>
 cd workflow-exe
 ```
 
-**2. Crear el entorno virtual:**
+**2. Create the virtual environment:**
 
 ```bash
 python -m venv .venv
 ```
 
-**3. Activar el entorno virtual:**
+**3. Activate the virtual environment:**
 
 ```bash
 # Windows (PowerShell)
@@ -38,7 +38,7 @@ python -m venv .venv
 .venv\Scripts\activate.bat
 ```
 
-**4. Instalar dependencias:**
+**4. Install dependencies:**
 
 ```bash
 pip install -r requirements.txt
@@ -46,21 +46,21 @@ pip install -r requirements.txt
 
 ---
 
-## Uso
+## Usage
 
-Con el entorno virtual activo:
+With the virtual environment active:
 
 ```bash
 python run.py
 ```
 
-Abre el navegador en `http://localhost:5000`.
+Open your browser at `http://localhost:5000`.
 
-> Siempre ejecutar desde la raíz del proyecto con el venv activo. Si el venv no está activo, los imports de `app.*` fallarán.
+> Always run from the project root with the venv active. If the venv is not active, `app.*` imports will fail.
 
 ---
 
-## Desactivar el entorno virtual
+## Deactivate the virtual environment
 
 ```bash
 deactivate
@@ -68,65 +68,65 @@ deactivate
 
 ---
 
-## Interfaz
+## Interface
 
-### Barra superior
-| Elemento | Descripción |
+### Top bar
+| Element | Description |
 |---|---|
-| Nombre del workflow | Clic para renombrar |
-| **Preview Code** | Muestra el Python que se generará |
-| **Save** | Guarda el grafo manualmente (también se guarda automáticamente) |
-| **Generate EXE** | Compila el workflow a `.exe` via PyInstaller |
+| Workflow name | Click to rename |
+| **Preview Code** | Shows the Python code that will be generated |
+| **Save** | Saves the graph manually (also auto-saved) |
+| **Generate EXE** | Compiles the workflow to `.exe` via PyInstaller |
 
-### Sidebar izquierdo
-- Lista de workflows: crear, seleccionar, eliminar
-- Paleta de nodos: arrastrar al canvas
+### Left sidebar
+- Workflow list: create, select, delete
+- Node palette: drag onto the canvas
 
-### Panel derecho
-Aparece al hacer clic en un nodo. Permite configurar sus parámetros.
+### Right panel
+Appears when clicking a node. Allows configuring its parameters.
 
 ---
 
-## Nodos disponibles
+## Available nodes
 
 ### Scheduler
-Ejecuta el workflow en un bucle con pausa entre iteraciones.
+Runs the workflow in a loop with a pause between iterations.
 
-| Campo | Tipo | Descripción |
+| Field | Type | Description |
 |---|---|---|
-| Interval | número | Frecuencia de ejecución |
-| Unit | seconds / minutes / hours | Unidad del intervalo |
+| Interval | number | Execution frequency |
+| Unit | seconds / minutes / hours | Interval unit |
 
-Genera:
+Generates:
 ```python
 _sleep_seconds = 60.0
 while True:
-    # resto del workflow
+    # rest of the workflow
     import time
     time.sleep(_sleep_seconds)
 ```
 
 ### Set Variables
-Asigna pares clave=valor al contexto del workflow.
+Assigns key=value pairs to the workflow context.
 
-| Campo | Descripción |
+| Field | Description |
 |---|---|
-| key | Nombre de variable Python válido |
-| value | Valor (se almacena como string) |
+| key | Valid Python variable name |
+| value | Value (stored as string) |
 
-Genera:
+Generates:
 ```python
-mi_variable = 'valor'
+my_variable = 'value'
 ```
 
 ### Get Current Date UTC
-Captura la fecha/hora UTC actual en una variable.
+Captures the current UTC date/time into a variable.
 
-| Campo | Descripción |
+| Field | Description |
 |---|---|
-| Output variable name | Nombre de la variable resultado |
+| Output variable name | Name of the result variable |
 
-Genera:
+Generates:
 ```python
 from datetime import datetime, timezone
 current_date_utc = datetime.now(timezone.utc)
@@ -134,95 +134,95 @@ current_date_utc = datetime.now(timezone.utc)
 
 ---
 
-## Generar EXE
+## Generate EXE
 
-1. Diseña el workflow y conecta los nodos
-2. Haz clic en **Generate EXE**
-3. Espera la compilación (puede tomar ~1 minuto la primera vez)
-4. Descarga el `.exe` desde el diálogo de resultado
+1. Design the workflow and connect the nodes
+2. Click **Generate EXE**
+3. Wait for compilation (may take ~1 minute the first time)
+4. Download the `.exe` from the result dialog
 
-El ejecutable es autónomo (`--onefile`) y no requiere Python instalado en la máquina destino.
+The executable is standalone (`--onefile`) and does not require Python installed on the target machine.
 
 ---
 
-## Estructura del proyecto
+## Project structure
 
 ```
 workflow-exe/
-├── run.py                     # Punto de entrada
+├── run.py                     # Entry point
 ├── requirements.txt           # flask, pyinstaller
 ├── app/
 │   ├── main.py                # Flask app
 │   ├── api/
-│   │   ├── workflows.py       # CRUD de workflows y grafo
-│   │   └── builder.py        # Validar / previsualizar / compilar / descargar
+│   │   ├── workflows.py       # Workflow CRUD and graph
+│   │   └── builder.py        # Validate / preview / build / download
 │   ├── db/
-│   │   └── manager.py         # SQLite: main.db + {id}.db por workflow
+│   │   └── manager.py         # SQLite: main.db + {id}.db per workflow
 │   ├── nodes/
-│   │   ├── base.py            # Clase abstracta BaseNode
+│   │   ├── base.py            # Abstract BaseNode class
 │   │   ├── scheduler.py
 │   │   ├── set_variables.py
 │   │   └── get_current_date.py
 │   ├── codegen/
-│   │   └── generator.py       # Topological sort + generación de código
+│   │   └── generator.py       # Topological sort + code generation
 │   └── static/                # Frontend (HTML + CSS + JS)
-├── data/                      # Bases de datos SQLite (generado en runtime)
-└── output/                    # Scripts .py y .exe compilados (generado en runtime)
+├── data/                      # SQLite databases (generated at runtime)
+└── output/                    # Compiled .py scripts and .exe files (generated at runtime)
 ```
 
 ---
 
-## API REST
+## REST API
 
-| Método | Endpoint | Descripción |
+| Method | Endpoint | Description |
 |---|---|---|
-| GET | `/api/workflows/` | Lista todos los workflows |
-| POST | `/api/workflows/` | Crea un workflow |
-| GET | `/api/workflows/{id}` | Obtiene metadata + grafo |
-| PUT | `/api/workflows/{id}` | Renombra / actualiza metadata |
-| DELETE | `/api/workflows/{id}` | Elimina workflow y su BD |
-| GET | `/api/workflows/{id}/graph` | Obtiene nodos y edges |
-| POST | `/api/workflows/{id}/graph` | Guarda nodos y edges |
-| POST | `/api/workflows/{id}/validate` | Valida sin compilar |
-| POST | `/api/workflows/{id}/preview` | Retorna el código Python generado |
-| POST | `/api/workflows/{id}/build` | Compila a `.exe` |
-| GET | `/api/workflows/{id}/download` | Descarga el `.exe` |
+| GET | `/api/workflows/` | List all workflows |
+| POST | `/api/workflows/` | Create a workflow |
+| GET | `/api/workflows/{id}` | Get metadata + graph |
+| PUT | `/api/workflows/{id}` | Rename / update metadata |
+| DELETE | `/api/workflows/{id}` | Delete workflow and its DB |
+| GET | `/api/workflows/{id}/graph` | Get nodes and edges |
+| POST | `/api/workflows/{id}/graph` | Save nodes and edges |
+| POST | `/api/workflows/{id}/validate` | Validate without compiling |
+| POST | `/api/workflows/{id}/preview` | Returns the generated Python code |
+| POST | `/api/workflows/{id}/build` | Compile to `.exe` |
+| GET | `/api/workflows/{id}/download` | Download the `.exe` |
 
 ---
 
-## Agregar nuevos nodos
+## Adding new nodes
 
-1. Crear `app/nodes/mi_nodo.py` extendiendo `BaseNode`:
+1. Create `app/nodes/my_node.py` extending `BaseNode`:
 
 ```python
 from app.nodes.base import BaseNode
 
-class MiNodo(BaseNode):
-    NODE_TYPE = "mi_nodo"
+class MyNode(BaseNode):
+    NODE_TYPE = "my_node"
 
     def validate(self) -> list:
-        return []  # retornar lista de errores
+        return []  # return list of errors
 
     def to_code(self, indent: int = 0) -> str:
-        return self._indent("# mi lógica aquí", indent)
+        return self._indent("# my logic here", indent)
 ```
 
-2. Registrar en `app/codegen/generator.py`:
+2. Register in `app/codegen/generator.py`:
 
 ```python
-from app.nodes.mi_nodo import MiNodo
-NODE_REGISTRY["mi_nodo"] = MiNodo
+from app.nodes.my_node import MyNode
+NODE_REGISTRY["my_node"] = MyNode
 ```
 
-3. Crear `app/static/js/nodes/mi_nodo.js` con la definición visual y registrarlo en `index.html`.
+3. Create `app/static/js/nodes/my_node.js` with the visual definition and register it in `index.html`.
 
 ---
 
-## Base de datos
+## Database
 
-Cada workflow usa su propio archivo SQLite (`data/{id}.db`) con dos tablas:
+Each workflow uses its own SQLite file (`data/{id}.db`) with two tables:
 
-- **nodes** — id, tipo, posición, configuración JSON
-- **edges** — conexiones entre nodos
+- **nodes** — id, type, position, JSON configuration
+- **edges** — connections between nodes
 
-Un archivo central `data/main.db` mantiene el registro de todos los workflows.
+A central file `data/main.db` maintains the registry of all workflows.
