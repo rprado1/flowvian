@@ -19,13 +19,19 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | 11 | La configuración de los nodos debe transformarse a código Python y compilarse con PyInstaller | ✅ Completado | `app/codegen/generator.py` convierte el grafo JSON → script `.py` autónomo via topological sort. PyInstaller compila ese script |
 | 12 | Cada workflow tendrá su propio archivo SQLite | ✅ Completado | `app/db/manager.py` crea `data/{workflow_id}.db` al crear cada workflow; se elimina al borrar el workflow |
 
+### Fase 2
+
+| # | Requerimiento | Estado | Notas |
+|---|---|---|---|
+| 13 | Nodo para agregar (días, horas, minutos, segundos) a una fecha existente del workflow | ✅ Completado | `app/nodes/add_time_to_date.py` — usa `datetime.timedelta`. Registrado en `NODE_REGISTRY`. Paleta y panel de propiedades en frontend |
+
 ---
 
 ## Resumen
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 12 |
+| ✅ Completado | 13 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 

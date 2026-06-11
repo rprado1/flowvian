@@ -1,3 +1,5 @@
+# Fase 1
+
 - Requiero crear una aplicación que me permita crear workflows empaquetados en .exe de windows
 - Debe tener una interfaz web
 - Debe ser en python
@@ -10,3 +12,7 @@
 - Por el momento no existen sub-wokflows
 - La configuracion o nodes vistos en el portal debe ser en en empaquetado transformado a codigo python y con pyinstaller crear el .exe
 - Cada workflow tendra su pripia archjvo sqlite
+
+# Fase 2
+
+- Necesito agregar un nuevo nodo que me permita ahregar (dias, horas, minutos, segunods) una fecha otra ya generada dentro del wokflow

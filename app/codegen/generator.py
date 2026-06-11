@@ -15,12 +15,14 @@ from app.nodes.base import BaseNode
 from app.nodes.scheduler import SchedulerNode
 from app.nodes.set_variables import SetVariablesNode
 from app.nodes.get_current_date import GetCurrentDateUTCNode
+from app.nodes.add_time_to_date import AddTimeToDateNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
     SchedulerNode.NODE_TYPE: SchedulerNode,
     SetVariablesNode.NODE_TYPE: SetVariablesNode,
     GetCurrentDateUTCNode.NODE_TYPE: GetCurrentDateUTCNode,
+    AddTimeToDateNode.NODE_TYPE: AddTimeToDateNode,
 }
 
 SCRIPT_HEADER = '''\
