@@ -24,6 +24,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | # | Requerimiento | Estado | Notas |
 |---|---|---|---|
 | 13 | Nodo para agregar (días, horas, minutos, segundos) a una fecha existente del workflow | ✅ Completado | `app/nodes/add_time_to_date.py` — usa `datetime.timedelta`. Registrado en `NODE_REGISTRY`. Paleta y panel de propiedades en frontend |
+| 14 | Nodo para restar (días, horas, minutos, segundos) a una fecha existente del workflow | ✅ Completado | `app/nodes/subtract_time_from_date.py` — usa `datetime.timedelta` con resta. Registrado en `NODE_REGISTRY`. Paleta y panel de propiedades en frontend |
 
 ---
 
@@ -31,7 +32,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 13 |
+| ✅ Completado | 14 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 
