@@ -27,6 +27,8 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | 14 | Nodo para restar (días, horas, minutos, segundos) a una fecha existente del workflow | ✅ Completado | `app/nodes/subtract_time_from_date.py` — usa `datetime.timedelta` con resta. Registrado en `NODE_REGISTRY`. Paleta y panel de propiedades en frontend |
 | 15 | Ejecución paralela de nodos | ✅ Completado | `_topological_waves()` en `app/codegen/generator.py` agrupa nodos independientes en waves. Cada wave multi-nodo se ejecuta con `ThreadPoolExecutor`. Paralelismo implícito basado en la topología del grafo |
 | 16 | Botón Run para ejecutar workflow en el portal, con tabla de entrada/salida por nodo | ✅ Completado | Backend: `POST /api/workflows/{id}/run` ejecuta script instrumentado vía subprocess. Frontend: botón ▶ Run en topbar + panel inferior con tabla de resultados por nodo |
+| 17 | Los nodos deben tener un nombre único; al crear uno con tipo ya existente agregar sufijo numérico | ✅ Completado | `generateInstanceName()` en `app/static/js/app.js` asigna el primer nombre disponible. `updateNodeTitle()` actualiza el canvas. El `instanceName` se persiste como `label` en SQLite y se restaura al cargar el grafo |
+| 18 | Al eliminar un nodo con tecla Delete mientras el panel de propiedades está abierto, el panel debe cerrarse y no quedar bloqueado | ✅ Completado | Handler `nodeRemoved` en `app/static/js/app.js` limpia `editor.node_selected` (ref interna de Drawflow al DOM eliminado) y elimina la entrada huérfana de `nodeConfigs` |
 
 ---
 
@@ -34,10 +36,10 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 16 |
+| ✅ Completado | 18 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 
 ---
 
-_Última actualización: 2026-06-11_
+_Última actualización: 2026-06-12_

@@ -6,10 +6,22 @@ Design the flow by dragging nodes onto an n8n-style canvas, configure each step,
 
 ---
 
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.9+, Flask 3.1, SQLite |
+| Frontend | React 19, Vite 8, React Flow v11 |
+| UI components | shadcn/ui + Tailwind CSS v3 |
+| Code generation | PyInstaller 6 (`--onefile`) |
+
+---
+
 ## Requirements
 
-- Python 3.9+
-- Windows (the generated `.exe` is Windows-only)
+- **Python 3.9+**
+- **Node.js 18+** and npm (required to rebuild the frontend)
+- **Windows** — the generated `.exe` is Windows-only
 
 ---
 
@@ -22,15 +34,11 @@ git clone <repo-url>
 cd workflow-exe
 ```
 
-**2. Create the virtual environment:**
+**2. Create and activate the Python virtual environment:**
 
 ```bash
 python -m venv .venv
-```
 
-**3. Activate the virtual environment:**
-
-```bash
 # Windows (PowerShell)
 .venv\Scripts\Activate.ps1
 
@@ -38,7 +46,7 @@ python -m venv .venv
 .venv\Scripts\activate.bat
 ```
 
-**4. Install dependencies:**
+**3. Install Python dependencies:**
 
 ```bash
 pip install -r requirements.txt
@@ -46,67 +54,115 @@ pip install -r requirements.txt
 
 ---
 
-## Usage
+## Running the app
 
-With the virtual environment active:
+**1. Build the React frontend (required after cloning — `dist/` is not committed):**
+
+```bash
+cd frontend
+npm install
+npm run build
+cd ..
+```
+
+**2. Start Flask:**
 
 ```bash
 python run.py
 ```
 
-Open your browser at `http://localhost:5000`.
+Open `http://localhost:5000` in your browser.
 
-> Always run from the project root with the venv active. If the venv is not active, `app.*` imports will fail.
+> Always run from the project root with the venv active.
 
 ---
 
-## Deactivate the virtual environment
+## Frontend development
+
+To work on the React source with hot module replacement:
+
+**1. Install Node dependencies (first time only):**
 
 ```bash
-deactivate
+cd frontend
+npm install
 ```
+
+**2. Start Vite dev server and Flask simultaneously:**
+
+```bash
+# Terminal 1 — backend
+python run.py
+
+# Terminal 2 — frontend
+cd frontend
+npm run dev
+```
+
+Open `http://localhost:5173`. Vite proxies `/api/*` requests to Flask on `:5000`.
+
+**3. Build for production (required for Flask to serve the app at `:5000`):**
+
+```bash
+cd frontend
+npm run build
+```
+
+This writes the bundle to `app/static/dist/`. Flask serves the assets via dedicated routes:
+
+- `/` → `dist/index.html`
+- `/assets/*` → `dist/assets/` (JS and CSS chunks)
+- Other root-level files → served from `dist/` if they exist
 
 ---
 
 ## Interface
 
 ### Top bar
+
 | Element | Description |
 |---|---|
 | Workflow name | Click to rename |
-| **Preview Code** | Shows the Python code that will be generated |
-| **Save** | Saves the graph manually (also auto-saved) |
-| **Generate EXE** | Compiles the workflow to `.exe` via PyInstaller |
+| **Preview Code** | Shows the generated Python code |
+| **Save** | Saves the graph manually (auto-save also runs 800 ms after any change) |
+| **▶ Run** | Executes the workflow and displays per-node input/output in the results panel |
+| **⚙ Generate EXE** | Compiles the workflow to a standalone `.exe` via PyInstaller |
 
 ### Left sidebar
-- Workflow list: create, select, delete
-- Node palette: drag onto the canvas
+
+- **Workflow list** — create, select, delete
+- **Node palette** — drag nodes onto the canvas
 
 ### Right panel
-Appears when clicking a node. Allows configuring its parameters.
+
+Opens when clicking a node. Shows the configuration form for that node. Close with `×` or press **Delete** to remove the selected node.
+
+### Run results panel
+
+Appears after clicking **▶ Run**. Displays a table with each node's execution status, input context, and output context.
 
 ---
 
 ## Available nodes
 
-### Scheduler
-Runs the workflow in a loop with a pause between iterations.
+### ⏱ Scheduler
+
+Runs the workflow in a loop with a configurable pause between iterations. Only one Scheduler per workflow is allowed.
 
 | Field | Type | Description |
 |---|---|---|
-| Interval | number | Execution frequency |
+| Interval | number | Pause between iterations |
 | Unit | seconds / minutes / hours | Interval unit |
 
-Generates:
 ```python
 _sleep_seconds = 60.0
 while True:
     # rest of the workflow
-    import time
     time.sleep(_sleep_seconds)
 ```
 
-### Set Variables
+### 📦 Set Variables
+
 Assigns key=value pairs to the workflow context.
 
 | Field | Description |
@@ -114,31 +170,77 @@ Assigns key=value pairs to the workflow context.
 | key | Valid Python variable name |
 | value | Value (stored as string) |
 
-Generates:
 ```python
 my_variable = 'value'
 ```
 
-### Get Current Date UTC
+### 📅 Get Current Date UTC
+
 Captures the current UTC date/time into a variable.
 
 | Field | Description |
 |---|---|
 | Output variable name | Name of the result variable |
 
-Generates:
 ```python
-from datetime import datetime, timezone
 current_date_utc = datetime.now(timezone.utc)
 ```
+
+### ⏩ Add Time to Date
+
+Adds days, hours, minutes, and/or seconds to an existing datetime variable.
+
+| Field | Description |
+|---|---|
+| Input datetime variable | Variable holding the source datetime |
+| Days / Hours / Minutes / Seconds | Amount to add |
+| Output variable name | Name of the result variable |
+
+```python
+new_date = source_date + timedelta(days=1, hours=2)
+```
+
+### ⏪ Subtract Time from Date
+
+Subtracts days, hours, minutes, and/or seconds from an existing datetime variable.
+
+| Field | Description |
+|---|---|
+| Input datetime variable | Variable holding the source datetime |
+| Days / Hours / Minutes / Seconds | Amount to subtract |
+| Output variable name | Name of the result variable |
+
+```python
+new_date = source_date - timedelta(minutes=30)
+```
+
+---
+
+## Node naming
+
+When a node is added to the canvas, it receives a unique name automatically:
+
+- First instance: `Set Variables`
+- Second instance: `Set Variables 2`
+- Third instance: `Set Variables 3`
+- If an instance is deleted, its name slot is reused by the next node of that type.
+
+---
+
+## Execution model
+
+Nodes are sorted topologically (Kahn's BFS). Independent nodes at the same depth are grouped into **waves** and executed in parallel using `ThreadPoolExecutor`. The Scheduler node acts as a loop boundary:
+
+- Nodes **before** the Scheduler run once at startup (setup code).
+- Nodes **after** the Scheduler run on every loop iteration.
 
 ---
 
 ## Generate EXE
 
 1. Design the workflow and connect the nodes
-2. Click **Generate EXE**
-3. Wait for compilation (may take ~1 minute the first time)
+2. Click **⚙ Generate EXE**
+3. Wait for compilation (may take ~1 minute the first time due to PyInstaller analysis)
 4. Download the `.exe` from the result dialog
 
 The executable is standalone (`--onefile`) and does not require Python installed on the target machine.
@@ -149,23 +251,41 @@ The executable is standalone (`--onefile`) and does not require Python installed
 
 ```
 workflow-exe/
-├── run.py                     # Entry point
+├── run.py                     # Entry point — starts Flask on :5000
 ├── requirements.txt           # flask, pyinstaller
+├── frontend/                  # React source (Vite)
+│   ├── src/
+│   │   ├── main.jsx
+│   │   ├── App.jsx
+│   │   ├── api.js             # Fetch helper
+│   │   ├── index.css          # Tailwind + CSS custom properties
+│   │   ├── context/
+│   │   │   └── WorkflowContext.jsx
+│   │   ├── hooks/
+│   │   │   └── useBuild.js
+│   │   ├── nodes/             # React Flow node components + PropsForm
+│   │   └── components/        # TopBar, Sidebar, Canvas, PropsPanel, RunPanel, modals
+│   ├── vite.config.js
+│   ├── tailwind.config.js
+│   └── package.json
 ├── app/
-│   ├── main.py                # Flask app
+│   ├── main.py                # Flask app — serves dist/ at /
 │   ├── api/
-│   │   ├── workflows.py       # Workflow CRUD and graph
-│   │   └── builder.py        # Validate / preview / build / download
+│   │   ├── workflows.py       # Workflow CRUD and graph endpoints
+│   │   └── builder.py         # Validate / preview / build / run / download
 │   ├── db/
 │   │   └── manager.py         # SQLite: main.db + {id}.db per workflow
 │   ├── nodes/
-│   │   ├── base.py            # Abstract BaseNode class
+│   │   ├── base.py            # Abstract BaseNode
 │   │   ├── scheduler.py
 │   │   ├── set_variables.py
-│   │   └── get_current_date.py
+│   │   ├── get_current_date.py
+│   │   ├── add_time_to_date.py
+│   │   └── subtract_time_from_date.py
 │   ├── codegen/
-│   │   └── generator.py       # Topological sort + code generation
-│   └── static/                # Frontend (HTML + CSS + JS)
+│   │   └── generator.py       # Topological waves + parallel code generation
+│   └── static/
+│       └── dist/              # Built React app (generated — do not edit)
 ├── data/                      # SQLite databases (generated at runtime)
 └── output/                    # Compiled .py scripts and .exe files (generated at runtime)
 ```
@@ -183,38 +303,64 @@ workflow-exe/
 | DELETE | `/api/workflows/{id}` | Delete workflow and its DB |
 | GET | `/api/workflows/{id}/graph` | Get nodes and edges |
 | POST | `/api/workflows/{id}/graph` | Save nodes and edges |
-| POST | `/api/workflows/{id}/validate` | Validate without compiling |
-| POST | `/api/workflows/{id}/preview` | Returns the generated Python code |
-| POST | `/api/workflows/{id}/build` | Compile to `.exe` |
-| GET | `/api/workflows/{id}/download` | Download the `.exe` |
+| POST | `/api/workflows/{id}/validate` | Validate graph without compiling |
+| POST | `/api/workflows/{id}/preview` | Return the generated Python code |
+| POST | `/api/workflows/{id}/build` | Start async EXE compilation (returns `job_id`) |
+| GET | `/api/workflows/{id}/build/status/{job_id}` | Poll build job status |
+| GET | `/api/workflows/{id}/download` | Download the compiled `.exe` |
+| POST | `/api/workflows/{id}/run` | Execute workflow and return per-node traces |
 
 ---
 
 ## Adding new nodes
 
-1. Create `app/nodes/my_node.py` extending `BaseNode`:
+### 1. Backend — create the node class
 
 ```python
+# app/nodes/my_node.py
+from __future__ import annotations
+from typing import Optional
 from app.nodes.base import BaseNode
 
 class MyNode(BaseNode):
     NODE_TYPE = "my_node"
 
     def validate(self) -> list:
-        return []  # return list of errors
+        errors = []
+        if not self.config.get("my_field"):
+            errors.append("my_field is required")
+        return errors
 
     def to_code(self, indent: int = 0) -> str:
-        return self._indent("# my logic here", indent)
+        value = self.config.get("my_field", "")
+        return self._indent(f"# my logic: {value}", indent)
 ```
 
-2. Register in `app/codegen/generator.py`:
+### 2. Register in the code generator
 
 ```python
+# app/codegen/generator.py
 from app.nodes.my_node import MyNode
 NODE_REGISTRY["my_node"] = MyNode
 ```
 
-3. Create `app/static/js/nodes/my_node.js` with the visual definition and register it in `index.html`.
+### 3. Frontend — create the React node component
+
+```
+frontend/src/nodes/MyNode.jsx
+```
+
+Export a default canvas component and a named `MyNodePropsForm` component. Follow the pattern of any existing node.
+
+### 4. Register in `frontend/src/nodes/index.js`
+
+Add the node type to `nodeTypes` and its metadata to `NODE_META` (label, icon, inputs, outputs, `defaultConfig`, `PropsForm`).
+
+### 5. Rebuild the frontend
+
+```bash
+cd frontend && npm run build
+```
 
 ---
 
@@ -222,7 +368,17 @@ NODE_REGISTRY["my_node"] = MyNode
 
 Each workflow uses its own SQLite file (`data/{id}.db`) with two tables:
 
-- **nodes** — id, type, position, JSON configuration
-- **edges** — connections between nodes
+- **nodes** — id, type, label (instance name), position, JSON config
+- **edges** — source/target node ids and handle ids
 
-A central file `data/main.db` maintains the registry of all workflows.
+A central file `data/main.db` maintains the registry of all workflows (id, name, description, timestamps).
+
+`save_workflow_graph()` does a full replace (DELETE + INSERT) — it is not a merge.
+
+---
+
+## Deactivate the virtual environment
+
+```bash
+deactivate
+```

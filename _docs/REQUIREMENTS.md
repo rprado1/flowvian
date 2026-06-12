@@ -19,3 +19,5 @@
 - Necesito agregar un nuevo nodo que me permita restar (dias, horas, minutos, segundos) una fecha a otra ya generada dentro del wokflow
 - Ejecución paralela de nodos
 - Requiero tern en el potal un boton run para ejcutar un workflow, al ejecutar se van ejectuando los ndos, en la parte inferior en una tabla/arbol se muestra los datos de entrada y salida de cada nod ejecutado
+- 5. Requiero que los nodos tengan un nombre unico, cuando se crean tienen el mismo nombre, si se crean nuevos nodos si ya existen nombres similares agregar un sufijo numerico
+- 6.- Cuando selecciono un nodo, se abre el sidebar de configuracion, si doy clic en la tecla suprimiar el nodo se elimina, pero el sidebar conrinua abierto y se bloquea no le puedo cerrar, deberia cerrarse cuando se elimina el nodo
