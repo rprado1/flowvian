@@ -2,63 +2,65 @@
 
 ## Objetivo
 
-Cuando un nodo está seleccionado (panel de propiedades abierto) y el usuario pulsa la tecla **Delete**, el nodo se elimina pero el panel de configuración queda abierto y bloqueado (no responde al botón de cerrar). El comportamiento esperado es que el panel se cierre automáticamente y el estado de la aplicación quede limpio.
+Cuando un nodo está seleccionado (panel de propiedades abierto) y el usuario pulsa la tecla **Delete**, el nodo se elimina pero el panel de configuración queda abierto y bloqueado. El comportamiento esperado es que el nodo se elimine y el panel se cierre automáticamente.
 
 ---
 
-## Diagnóstico del bug
+## Diagnóstico del bug (revisado tras investigación profunda)
 
-### Causa raíz
+### Causa raíz real: el evento `keydown` nunca llega a Drawflow
 
-Drawflow tiene **dos rutas distintas** para eliminar un nodo, y se comportan diferente respecto a los eventos que disparan:
+El diagnóstico anterior era incorrecto. La investigación del código fuente de Drawflow reveló que el problema **no** es que `nodeRemoved` se dispare sin limpiar estado — es que el `keydown` de la tecla Delete **nunca llega** al handler de Drawflow en absoluto.
 
-| Ruta | Eventos disparados | `node_selected` interno limpiado |
-|---|---|---|
-| Botón `×` en el nodo (UI de Drawflow) | `nodeRemoved` + `nodeUnselected` | Sí (`null`) |
-| Tecla **Delete** (handler nativo de Drawflow) | Solo `nodeRemoved` | **No** (queda apuntando al DOM eliminado) |
+#### Por qué no llega
 
-El handler de la tecla Delete en Drawflow (`drawflow.min.js`) llama directamente a `removeNodeId()` sin limpiar `this.node_selected` ni disparar `nodeUnselected`:
+Drawflow registra su handler de teclado así en `start()`:
 
 ```js
-// Drawflow key() — ruta con Delete key
+this.container.tabIndex = 0;   // hace #drawflow focusable
+this.container.addEventListener("keydown", this.key.bind(this));
+```
+
+El listener vive **exclusivamente en `#drawflow`**. Para que dispare, `#drawflow` debe estar **enfocado** (`document.activeElement === #drawflow`) en el momento en que el usuario presiona Delete.
+
+El flujo que rompe el foco:
+
+```
+1. Usuario hace clic en el nodo → #drawflow recibe el clic → #drawflow tiene el foco ✅
+2. selectNode() dispara → openPropsPanel() inyecta <input>/<select> en #props-body
+3. El panel se muestra con campos de formulario visibles
+4. El usuario (inevitablemente) hace clic en algún campo del panel para configurar el nodo
+   → el <input> recibe el foco → #drawflow pierde el foco ❌
+5. Usuario presiona Delete
+   → keydown se dispara sobre el <input> enfocado (dentro de #props-panel)
+   → el evento NUNCA llega a #drawflow
+   → Drawflow no ve la tecla → no elimina el nodo → panel permanece abierto
+```
+
+Incluso si el usuario no hace clic en un input, existe un segundo guard dentro del propio handler de Drawflow que bloquea la eliminación:
+
+```js
+// drawflow.min.js — key()
 ("Delete" === e.key) && (
-    null != this.node_selected && this.removeNodeId(this.node_selected.id),
-    // ← node_selected NUNCA se pone a null aquí
-    // ← nodeUnselected NUNCA se dispara aquí
+    null != this.node_selected &&
+    "INPUT"    !== this.first_click.tagName &&  // ← si el último clic fue en un <input>
+    "TEXTAREA" !== this.first_click.tagName &&  //   del nodo, esto bloquea
+    this.removeNodeId(this.node_selected.id)
 )
 ```
 
-### Estado sucio post-Delete
+`this.first_click` se establece en el `mousedown` del **último clic dentro de `#drawflow`**. Si el usuario hizo clic en un campo de texto dentro de la tarjeta del nodo, `first_click.tagName === "INPUT"` y la eliminación queda bloqueada aunque el foco siga en `#drawflow`.
 
-Después de pulsar Delete sobre un nodo seleccionado:
+### Resumen de causas
 
-| Variable | Estado esperado | Estado real |
+| # | Causa | Efecto |
 |---|---|---|
-| `app.js: selectedNodeId` | `null` | `null` ✅ (corregido por `deselectNode()` vía `nodeRemoved`) |
-| Panel de propiedades visible | oculto | **visible** ❌ |
-| `editor.node_selected` (interno Drawflow) | `null` | **ref a DOM eliminado** ❌ |
-| `nodeConfigs[id]` del nodo borrado | eliminado | **huerfano en memoria** ⚠️ |
+| 1 | Al abrir el panel de props, el usuario interactúa con `<input>` → foco sale de `#drawflow` | Delete no llega al handler de Drawflow → **nodo no se elimina** |
+| 2 | Guard `first_click.tagName !== "INPUT"` en Drawflow | Bloquea eliminación si el último clic dentro del canvas fue en un input del nodo |
 
-### ¿Por qué el panel queda bloqueado?
+### Estado de la implementación anterior (`editor.node_selected = null`)
 
-El handler actual de `nodeRemoved` en `app.js` es:
-
-```js
-editor.on('nodeRemoved', () => { scheduleSave(); deselectNode(); });
-```
-
-`deselectNode()` llama a `closePropsPanel()`, que debería ocultar el panel. Sin embargo, el panel **sí se cierra** en la mayoría de casos. Lo que el usuario reporta como "bloqueado" es el siguiente escenario de carrera:
-
-1. El usuario pulsa Delete.
-2. Drawflow elimina el nodo del DOM y dispara `nodeRemoved`.
-3. `deselectNode()` → `closePropsPanel()` se ejecuta → panel se oculta. ✅
-4. **Pero** `editor.node_selected` sigue apuntando al elemento DOM eliminado.
-5. Cuando el usuario intenta hacer **clic en el canvas** después de la eliminación, Drawflow's `mousedown` handler ejecuta `this.node_selected.classList.remove("selected")` sobre el elemento fantasma.
-6. Drawflow puede re-disparar estados internos inconsistentes, causando que el panel vuelva a abrirse o que el botón `×` del panel no funcione (porque `deselectNode()` verifica `selectedNodeId !== null` antes de limpiar — si por alguna re-entrada llega a ser no-null, el ciclo se rompe).
-
-### Problema secundario: `nodeConfigs` con entradas huérfanas
-
-Cuando se elimina un nodo, su entrada en `nodeConfigs` nunca se borra. Esto no causa un bug visible inmediato porque `saveGraph()` toma los nodos de `editor.export()` (que ya no incluye el nodo borrado), pero acumula basura en memoria durante la sesión.
+El cambio implementado en la iteración anterior (limpiar `editor.node_selected` en `nodeRemoved`) es **correcto y necesario** para el caso del botón `×`, pero no resuelve este bug porque el `keydown` nunca llega a Drawflow en primer lugar. Ese cambio puede quedar como está (es beneficioso para la limpieza de estado).
 
 ---
 
@@ -66,93 +68,56 @@ Cuando se elimina un nodo, su entrada en `nodeConfigs` nunca se borra. Esto no c
 
 ### Principio
 
-Interceptar el evento `nodeRemoved` para ejecutar **limpieza completa de estado**, incluyendo:
+En lugar de depender del handler nativo de teclado de Drawflow (que requiere foco en `#drawflow`), la aplicación implementa su **propio handler `keydown` a nivel de `document`** que detecta Delete cuando hay un nodo seleccionado y ejecuta la eliminación directamente llamando a la API de Drawflow.
 
-1. Cerrar el panel de propiedades.
-2. Limpiar `selectedNodeId`.
-3. Limpiar la entrada huérfana de `nodeConfigs`.
-4. Forzar la limpieza de `editor.node_selected` dentro de Drawflow.
+Esto es más robusto que intentar gestionar el foco porque:
+- No requiere que el usuario nunca interactúe con los inputs del panel.
+- Funciona independientemente de `first_click.tagName`.
+- Es el patrón estándar para atajos de teclado globales en SPAs.
 
-Todo esto ya ocurre **parcialmente** en el handler existente de `nodeRemoved`. El problema es el punto 4: `editor.node_selected` no se limpia desde fuera de Drawflow.
+### Solución
 
-### Solución propuesta
+#### Paso 1 — Handler `keydown` global en `document`
 
-#### Opción A — Limpiar `editor.node_selected` directamente (recomendada)
-
-Modificar el handler `nodeRemoved` en `app.js` para, además de llamar a `deselectNode()`, forzar `editor.node_selected = null` después de la eliminación.
-
-Drawflow expone `node_selected` como propiedad pública del objeto `editor`. Asignarle `null` replica exactamente lo que hace el botón `×` interno, sin necesidad de modificar el vendor.
+Agregar un listener en `document` que capture Delete cuando:
+1. Hay un nodo seleccionado (`selectedNodeId !== null`).
+2. El foco activo **no** está en un `<input>`, `<textarea>`, o elemento `contenteditable` (para no interceptar Delete mientras el usuario edita texto en un modal u otro campo).
+3. No hay ningún modal abierto.
 
 ```js
-// Antes
-editor.on('nodeRemoved', () => { scheduleSave(); deselectNode(); });
-
-// Después
-editor.on('nodeRemoved', id => {
-    delete nodeConfigs[id];          // limpiar config huérfana
-    editor.node_selected = null;     // limpiar referencia interna de Drawflow
-    scheduleSave();
-    deselectNode();
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Delete') return;
+    // No actuar si el foco está en un campo de texto editable
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' ||
+        document.activeElement?.isContentEditable) return;
+    // No actuar si hay un modal abierto
+    if (document.querySelector('.modal-backdrop:not(.hidden)')) return;
+    // Si hay un nodo seleccionado, eliminarlo
+    if (selectedNodeId !== null) {
+        e.preventDefault();
+        editor.removeNodeId('node-' + selectedNodeId);
+    }
 });
 ```
 
-**Ventajas:**
-- Cambio mínimo (1 línea de código de producción).
-- No modifica el vendor.
-- Resuelve ambos problemas: el panel y la referencia fantasma.
-- Idempotente: si el nodo ya fue eliminado vía botón `×` (donde `node_selected` ya es null), asignarlo a null de nuevo es inofensivo.
+**Nota sobre `editor.removeNodeId`:** Drawflow expone este método públicamente. Recibe el id con prefijo `"node-"` (ej. `"node-3"`). Al llamarlo, Drawflow dispara `nodeRemoved` normalmente, por lo que toda la lógica de limpieza ya existente (`delete nodeConfigs[id]`, `editor.node_selected = null`, `deselectNode()`, `scheduleSave()`) se ejecuta sin duplicar código.
 
-**Riesgos:** Ninguno. `node_selected` es una propiedad pública y Drawflow la consulta antes de usarla (`null != this.node_selected && ...`).
+#### Paso 2 — Restituir foco a `#drawflow` al abrir el panel (mejora de UX, opcional pero recomendada)
 
-#### Opción B — Modificar `deselectNode()` para ser más agresiva
-
-Añadir la limpieza de Drawflow dentro de `deselectNode()`:
+Al abrir el panel de propiedades, devolver el foco a `#drawflow` para que el handler nativo de Drawflow también funcione como respaldo cuando el usuario nunca toca los inputs del panel:
 
 ```js
-function deselectNode() {
-    if (selectedNodeId !== null) {
-        saveCurrentProps();
-    }
-    selectedNodeId = null;
-    editor.node_selected = null;     // nueva línea
-    closePropsPanel();
+function openPropsPanel(title, html) {
+    document.getElementById('props-title').textContent = title;
+    document.getElementById('props-body').innerHTML = html;
+    document.getElementById('props-panel').classList.remove('hidden');
+    // Devolver foco al canvas para que Delete nativo de Drawflow también funcione
+    document.getElementById('drawflow')?.focus({ preventScroll: true });
 }
 ```
 
-**Ventajas:** Centraliza toda la lógica de "deselección" en un solo lugar.  
-**Desventaja:** `deselectNode()` se llama también desde otros contextos donde `editor` podría no estar inicializado, aunque en la práctica siempre lo está durante el ciclo de vida de la app.
-
-**Opción elegida: Opción A** — más localizada, no afecta otros flujos.
-
----
-
-## Cambios necesarios
-
-### 1. `app/static/js/app.js`
-
-**Una sola línea cambia** en el handler `nodeRemoved`:
-
-```js
-// Línea actual (~107):
-editor.on('nodeRemoved',  () => { scheduleSave(); deselectNode(); });
-
-// Línea nueva:
-editor.on('nodeRemoved', id => {
-    delete nodeConfigs[id];
-    editor.node_selected = null;
-    scheduleSave();
-    deselectNode();
-});
-```
-
-**Detalle de cada línea añadida:**
-
-| Línea | Propósito |
-|---|---|
-| `delete nodeConfigs[id]` | Elimina la entrada huérfana. El parámetro `id` que Drawflow pasa al evento es el id del nodo eliminado (entero como string, igual a la clave en `nodeConfigs`) |
-| `editor.node_selected = null` | Limpia la referencia interna de Drawflow al DOM eliminado, evitando errores en futuros eventos de mouse |
-| `scheduleSave()` | Sin cambio — persiste el grafo actualizado |
-| `deselectNode()` | Sin cambio — limpia `selectedNodeId` y cierra el panel |
+Esto no impide que el usuario haga clic en los inputs del panel — simplemente garantiza que en el momento de abrir el panel, el foco está en el lugar correcto. El handler global del Paso 1 es el seguro principal.
 
 ---
 
@@ -160,9 +125,44 @@ editor.on('nodeRemoved', id => {
 
 | Archivo | Tipo de cambio | Descripción |
 |---|---|---|
-| `app/static/js/app.js` | Modificación | Ampliar el handler `nodeRemoved` con limpieza de `nodeConfigs` y `editor.node_selected` |
+| `app/static/js/app.js` | Modificación | Agregar handler `keydown` global en `document` dentro de `initEditor()` |
+| `app/static/js/app.js` | Modificación | Agregar `.focus()` al final de `openPropsPanel()` |
 
-**Total: 1 archivo modificado, 3 líneas cambiadas.**
+**Total: 1 archivo, 2 bloques de código modificados.**
+
+---
+
+## Cambios detallados
+
+### 1. En `initEditor()` — nuevo listener global de teclado
+
+Agregar al final del cuerpo de `initEditor()`, después de los listeners de Drawflow:
+
+```js
+// Global keyboard shortcut: Delete removes the selected node from anywhere
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Delete') return;
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' ||
+        document.activeElement?.isContentEditable) return;
+    if (document.querySelector('.modal-backdrop:not(.hidden)')) return;
+    if (selectedNodeId !== null) {
+        e.preventDefault();
+        editor.removeNodeId('node-' + selectedNodeId);
+    }
+});
+```
+
+### 2. En `openPropsPanel()` — devolver foco al canvas
+
+```js
+function openPropsPanel(title, html) {
+    document.getElementById('props-title').textContent = title;
+    document.getElementById('props-body').innerHTML = html;
+    document.getElementById('props-panel').classList.remove('hidden');
+    document.getElementById('drawflow')?.focus({ preventScroll: true });
+}
+```
 
 ---
 
@@ -170,23 +170,22 @@ editor.on('nodeRemoved', id => {
 
 | Caso | Comportamiento esperado |
 |---|---|
-| Nodo eliminado con tecla Delete mientras panel abierto | Panel se cierra automáticamente, estado limpio |
-| Nodo eliminado con botón `×` de Drawflow mientras panel abierto | Panel se cierra (ya funcionaba), sin regresión |
-| Nodo eliminado sin estar seleccionado | `deselectNode()` llama a `saveCurrentProps()` que retorna temprano (guard `selectedNodeId === null`). Panel ya estaba cerrado — sin efecto |
-| Múltiples nodos eliminados rápidamente (si fuera posible) | Cada `nodeRemoved` limpia su `id` de `nodeConfigs` independientemente |
-| `nodeConfigs[id]` ya no existe al disparar `nodeRemoved` | `delete` sobre clave inexistente es inofensivo en JS |
-| Eliminar un nodo que no estaba en `nodeConfigs` | `delete` sobre clave inexistente es inofensivo en JS |
+| Delete con nodo seleccionado y foco en el panel de props | Handler global intercepta → nodo eliminado, panel cerrado ✅ |
+| Delete con nodo seleccionado y foco en `#drawflow` | Handler nativo de Drawflow Y handler global ambos podrían disparar. El handler global llama `removeNodeId` → `nodeRemoved` dispara. El handler de Drawflow también puede llamar `removeNodeId` sobre el mismo nodo — pero Drawflow hace `delete data[id]` que sobre un id ya borrado es inofensivo. Se añade guard `if (selectedNodeId !== null)` antes de llamar para evitar doble ejecución |
+| Delete mientras se escribe en un `<input>` del panel (nombre, intervalo, etc.) | Guard `tag === 'INPUT'` bloquea el handler global → el usuario puede borrar texto normalmente ✅ |
+| Delete con un modal abierto (nuevo workflow, renombrar, confirmar borrar) | Guard de modal bloquea el handler global → Delete no elimina nodo ✅ |
+| Delete sin ningún nodo seleccionado | `selectedNodeId === null` → handler global no actúa ✅ |
+| Eliminación vía botón `×` de Drawflow | No pasa por el handler global; `nodeRemoved` ya limpia el estado ✅ |
+| El handler global y el nativo de Drawflow disparan al mismo tiempo | `removeNodeId` sobre id ya eliminado: Drawflow busca el elemento DOM que ya no existe → el `querySelector` retorna `null` → Drawflow lo ignora silenciosamente. No hay error visible |
 
 ---
 
 ## Verificación
 
-1. Crear un workflow con al menos 2 nodos.
-2. Hacer clic en un nodo → verificar que el panel de propiedades se abre.
-3. Pulsar la tecla **Delete** → verificar que:
-   - El nodo desaparece del canvas.
-   - El panel de propiedades se cierra automáticamente.
-   - El botón `×` del panel no queda bloqueado (aunque ya no es visible).
-4. Hacer clic en otro nodo → verificar que el panel se abre correctamente (sin estado sucio del nodo anterior).
-5. Eliminar un nodo con el botón `×` de Drawflow (mientras está seleccionado) → verificar que el comportamiento no cambió (sin regresión).
-6. Eliminar un nodo **sin** seleccionarlo → verificar que el canvas y el estado son correctos.
+1. Crear un nodo. Hacer clic en él → panel se abre.
+2. **Sin tocar ningún input del panel**, presionar Delete → nodo eliminado, panel cerrado.
+3. Crear un nodo. Hacer clic en él → panel se abre. **Hacer clic en un input del panel** (ej. cambiar el intervalo del scheduler). Presionar Delete → nodo eliminado, panel cerrado.
+4. Crear un nodo. Hacer clic en él. Abrir modal de nuevo workflow. Presionar Delete → nodo **no** se elimina (modal activo).
+5. Crear un nodo. Hacer clic en él. Hacer clic en el `×` del panel (sin Delete) → panel se cierra, nodo permanece.
+6. Crear un nodo. Eliminarlo con el botón `×` del nodo en Drawflow → sin regresión.
+7. Presionar Delete sin nodo seleccionado → sin efecto.
