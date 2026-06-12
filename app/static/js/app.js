@@ -23,6 +23,62 @@ let nodeConfigs     = {};     // nodeId → config object
 let _saveTimeout    = null;
 
 // ============================================================
+// Node naming helpers
+// ============================================================
+
+/**
+ * Returns the next available instance name for a given node type.
+ * First instance → "<BaseName>" (no suffix).
+ * Subsequent → "<BaseName> 2", "<BaseName> 3", etc.
+ * Fills gaps: if "Set Variables 2" was deleted, the next one reuses that slot.
+ */
+function generateInstanceName(type) {
+  const def = NODE_DEFS[type];
+  if (!def) return type;
+  const baseName = def.label || type;
+
+  // Collect all instanceNames currently in use
+  const usedNames = new Set(
+    Object.values(nodeConfigs)
+      .map(cfg => cfg && cfg.instanceName)
+      .filter(Boolean)
+  );
+
+  // First candidate: baseName (no suffix)
+  if (!usedNames.has(baseName)) return baseName;
+
+  // Find the lowest available numeric suffix starting at 2
+  for (let n = 2; n < 9999; n++) {
+    const candidate = `${baseName} ${n}`;
+    if (!usedNames.has(candidate)) return candidate;
+  }
+  return baseName; // fallback (unreachable in practice)
+}
+
+/**
+ * Updates the visible title of a Drawflow node on the canvas.
+ * Preserves the icon span inside .title-box and replaces only the text.
+ */
+function updateNodeTitle(nodeId, instanceName) {
+  const nodeEl = document.getElementById(`node-${nodeId}`);
+  if (!nodeEl) return;
+  const titleBox = nodeEl.querySelector('.title-box');
+  if (!titleBox) return;
+
+  // Preserve any leading <span> (icon) and replace the trailing text node
+  const iconSpan = titleBox.querySelector('span');
+  if (iconSpan) {
+    // Remove all child nodes except the icon span
+    while (titleBox.lastChild && titleBox.lastChild !== iconSpan) {
+      titleBox.removeChild(titleBox.lastChild);
+    }
+    titleBox.appendChild(document.createTextNode(' ' + instanceName));
+  } else {
+    titleBox.textContent = instanceName;
+  }
+}
+
+// ============================================================
 // Init
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
@@ -71,6 +127,9 @@ function addNode(type, x, y) {
   const def = NODE_DEFS[type];
   if (!def) return;
   const config = def.defaultConfig();
+  // Assign unique instance name before registering in nodeConfigs so that
+  // generateInstanceName() can see all already-taken names.
+  config.instanceName = generateInstanceName(type);
   const nodeId = editor.addNode(
     type,
     def.inputs,
@@ -81,6 +140,8 @@ function addNode(type, x, y) {
     def.html(),
   );
   nodeConfigs[nodeId] = config;
+  // Update canvas title after Drawflow renders the node DOM
+  setTimeout(() => updateNodeTitle(nodeId, config.instanceName), 0);
   def.updateNodePreview?.(nodeId, config, editor);
   scheduleSave();
 }
@@ -144,7 +205,7 @@ async function saveGraph() {
   const nodes = Object.entries(homeNodes).map(([id, n]) => ({
     id:      String(id),
     type:    n.name,
-    label:   n.name,
+    label:   (nodeConfigs[id]?.instanceName) || NODE_DEFS[n.name]?.label || n.name,
     pos_x:   n.pos_x,
     pos_y:   n.pos_y,
     config:  nodeConfigs[id] || {},
@@ -196,7 +257,17 @@ async function loadGraph(wfId) {
       def.html(),
     );
     nodeMap[n.id] = dfId;
-    nodeConfigs[dfId] = n.config || def.defaultConfig();
+    const cfg = n.config || def.defaultConfig();
+    // Restore instance name: use saved label, falling back to def.label for
+    // nodes saved before this feature was introduced (label === type).
+    cfg.instanceName = (n.label && n.label !== n.type)
+      ? n.label
+      : (def.label || n.type);
+    nodeConfigs[dfId] = cfg;
+    // Update canvas title asynchronously so Drawflow's DOM is ready
+    const capturedId = dfId;
+    const capturedName = cfg.instanceName;
+    setTimeout(() => updateNodeTitle(capturedId, capturedName), 0);
     def.updateNodePreview?.(dfId, nodeConfigs[dfId], editor);
   }
 
