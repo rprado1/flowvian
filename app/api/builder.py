@@ -8,7 +8,7 @@ import uuid
 
 from flask import Blueprint, jsonify, current_app, send_file
 from app.db.manager import get_workflow_meta, get_workflow_graph
-from app.codegen.generator import generate_script, validate_graph
+from app.codegen.generator import generate_script, validate_graph, generate_run_script
 
 builder_bp = Blueprint("builder", __name__)
 
@@ -178,6 +178,79 @@ def download(workflow_id):
         return jsonify({"error": "No compiled .exe found — build the workflow first"}), 404
 
     return send_file(exe_path, as_attachment=True, download_name=f"{safe_name}.exe")
+
+
+# ---------------------------------------------------------------------------
+# Run — execute workflow in-process and return per-node traces
+# ---------------------------------------------------------------------------
+
+@builder_bp.route("/<workflow_id>/run", methods=["POST"])
+def run_workflow(workflow_id):
+    meta = get_workflow_meta(data_dir(), workflow_id)
+    if not meta:
+        return jsonify({"error": "not found"}), 404
+
+    graph = get_workflow_graph(data_dir(), workflow_id)
+
+    try:
+        script = generate_run_script(meta["name"], graph["nodes"], graph["edges"])
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 422
+
+    wf_output_dir = os.path.join(output_dir(), workflow_id)
+    os.makedirs(wf_output_dir, exist_ok=True)
+
+    run_script_path = os.path.join(wf_output_dir, "_run.py")
+    trace_path = os.path.join(wf_output_dir, "_trace.json")
+
+    with open(run_script_path, "w", encoding="utf-8") as f:
+        f.write(script)
+
+    env = os.environ.copy()
+    env["WORKFLOW_TRACE_PATH"] = trace_path
+
+    try:
+        result = subprocess.run(
+            [sys.executable, run_script_path],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            env=env,
+        )
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            "error": "Workflow execution timed out (30s)",
+            "traces": [],
+            "output": "",
+        }), 500
+    except Exception as exc:
+        return jsonify({
+            "error": f"Failed to execute workflow: {exc}",
+            "traces": [],
+            "output": "",
+        }), 500
+
+    traces = []
+    if os.path.exists(trace_path):
+        try:
+            with open(trace_path, "r", encoding="utf-8") as f:
+                traces = json.load(f)
+        except Exception:
+            pass
+
+    output = result.stderr + result.stdout
+
+    if result.returncode != 0:
+        return jsonify({
+            "error": f"Script exited with code {result.returncode}",
+            "traces": traces,
+            "output": output.strip() or None,
+        }), 422
+
+    return jsonify({
+        "traces": traces,
+        "output": output.strip() or None,
+    })
 
 
 # ---------------------------------------------------------------------------

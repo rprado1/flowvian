@@ -25,6 +25,8 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 |---|---|---|---|
 | 13 | Nodo para agregar (días, horas, minutos, segundos) a una fecha existente del workflow | ✅ Completado | `app/nodes/add_time_to_date.py` — usa `datetime.timedelta`. Registrado en `NODE_REGISTRY`. Paleta y panel de propiedades en frontend |
 | 14 | Nodo para restar (días, horas, minutos, segundos) a una fecha existente del workflow | ✅ Completado | `app/nodes/subtract_time_from_date.py` — usa `datetime.timedelta` con resta. Registrado en `NODE_REGISTRY`. Paleta y panel de propiedades en frontend |
+| 15 | Ejecución paralela de nodos | ✅ Completado | `_topological_waves()` en `app/codegen/generator.py` agrupa nodos independientes en waves. Cada wave multi-nodo se ejecuta con `ThreadPoolExecutor`. Paralelismo implícito basado en la topología del grafo |
+| 16 | Botón Run para ejecutar workflow en el portal, con tabla de entrada/salida por nodo | ✅ Completado | Backend: `POST /api/workflows/{id}/run` ejecuta script instrumentado vía subprocess. Frontend: botón ▶ Run en topbar + panel inferior con tabla de resultados por nodo |
 
 ---
 
@@ -32,7 +34,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 14 |
+| ✅ Completado | 16 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 

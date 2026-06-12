@@ -17,3 +17,5 @@
 
 - Necesito agregar un nuevo nodo que me permita agregar (dias, horas, minutos, segundos) una fecha a otra ya generada dentro del wokflow
 - Necesito agregar un nuevo nodo que me permita restar (dias, horas, minutos, segundos) una fecha a otra ya generada dentro del wokflow
+- Ejecución paralela de nodos
+- Requiero tern en el potal un boton run para ejcutar un workflow, al ejecutar se van ejectuando los ndos, en la parte inferior en una tabla/arbol se muestra los datos de entrada y salida de cada nod ejecutado

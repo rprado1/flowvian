@@ -124,6 +124,7 @@ def _emit_waves(
     waves: list[list[dict]],
     base_indent: int,
     lines: list[str],
+    instrument: bool = False,
 ) -> None:
     """
     Emit Python source lines for a sequence of waves at the given base indent.
@@ -134,28 +135,57 @@ def _emit_waves(
       function _wave_<w>_branch_<b>() to give it its own local scope.
       Any exception raised inside a branch is re-raised by _f.result(),
       which propagates up through _run() to the top-level error handler.
+    - When instrument=True, each node's execution is wrapped with pre/post
+      context capture that appends a trace entry to the global _trace list.
     """
     pad = " " * base_indent
 
     for w_idx, wave in enumerate(waves):
         if len(wave) == 1:
-            # Single node — emit directly, no threading
-            node = _build_node(wave[0])
-            lines.append(node.to_code(indent=base_indent))
-            lines.append("")
+            node_data = wave[0]
+            node = _build_node(node_data)
+            node_id = node_data["id"]
+            node_type = node_data["type"]
+            node_label = node_data.get("label", node_type)
+
+            if instrument:
+                lines.append(f"{pad}_tr_in = {{k: v for k, v in locals().items() if not k.startswith('_')}}")
+                lines.append(f"{pad}try:")
+                lines.append(node.to_code(indent=base_indent + 4))
+                lines.append(f"{pad}    _tr_out = {{k: v for k, v in locals().items() if not k.startswith('_')}}")
+                lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'input': _tr_in, 'output': _tr_out}})")
+                lines.append(f"{pad}except Exception as _tr_ex:")
+                lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'error', 'ts': time.time(), 'input': _tr_in, 'error': str(_tr_ex)}})")
+                lines.append(f"{pad}    raise")
+                lines.append("")
+            else:
+                lines.append(node.to_code(indent=base_indent))
+                lines.append("")
         else:
-            # Multiple independent nodes — run in parallel
             branch_names: list[str] = []
             for b_idx, node_data in enumerate(wave):
                 fn_name = f"_wave_{w_idx}_branch_{b_idx}"
                 branch_names.append(fn_name)
                 node = _build_node(node_data)
-                # Define branch function at base_indent level
+                node_id = node_data["id"]
+                node_type = node_data["type"]
+                node_label = node_data.get("label", node_type)
+
                 lines.append(f"{pad}def {fn_name}():")
-                lines.append(node.to_code(indent=base_indent + 4))
+                if instrument:
+                    inner_pad = " " * (base_indent + 4)
+                    lines.append(f"{inner_pad}_tr_in = {{k: v for k, v in locals().items() if not k.startswith('_')}}")
+                    lines.append(f"{inner_pad}try:")
+                    lines.append(node.to_code(indent=base_indent + 8))
+                    lines.append(f"{inner_pad}    _tr_out = {{k: v for k, v in locals().items() if not k.startswith('_')}}")
+                    lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'input': _tr_in, 'output': _tr_out}})")
+                    lines.append(f"{inner_pad}except Exception as _tr_ex:")
+                    lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'error', 'ts': time.time(), 'input': _tr_in, 'error': str(_tr_ex)}})")
+                    lines.append(f"{inner_pad}    raise")
+                else:
+                    lines.append(node.to_code(indent=base_indent + 4))
                 lines.append("")
 
-            # Dispatch all branches and wait; re-raise any exception
             submits = ", ".join(
                 f"_pool.submit({fn})" for fn in branch_names
             )
@@ -254,5 +284,99 @@ def generate_script(workflow_name: str, nodes: list[dict], edges: list[dict]) ->
         _emit_waves(waves, base_indent=4, lines=lines)
 
     lines.append(WORKFLOW_MAIN_END)
+
+    return "\n".join(lines)
+
+
+RUN_SCRIPT_HEADER = '''\
+# ============================================================
+# Auto-generated workflow run script (instrumented)
+# ============================================================
+import sys
+import os
+import json
+import time
+from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_COMPLETED as _ALL
+
+_trace = []
+_trace_path = os.environ.get("WORKFLOW_TRACE_PATH", "")
+
+def _write_traces():
+    if _trace_path:
+        try:
+            with open(_trace_path, "w", encoding="utf-8") as _f:
+                json.dump(_trace, _f, default=str, indent=2)
+        except Exception:
+            pass
+'''
+
+
+def generate_run_script(workflow_name: str, nodes: list[dict], edges: list[dict]) -> str:
+    """
+    Generate an instrumented Python script for one-time workflow execution.
+    Each node's input/output context is captured and written to a trace file.
+
+    The trace file path is passed via the WORKFLOW_TRACE_PATH environment variable.
+    Returns the script as a string.
+    """
+    errors = validate_graph(nodes, edges)
+    if errors:
+        raise ValueError("Validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
+
+    waves = _topological_waves(nodes, edges)
+
+    lines: list[str] = [f'WORKFLOW_NAME = {repr(workflow_name)}\n']
+    lines.append(RUN_SCRIPT_HEADER)
+
+    scheduler_wave_idx: Optional[int] = None
+    for w_idx, wave in enumerate(waves):
+        for node_data in wave:
+            if node_data["type"] == SchedulerNode.NODE_TYPE:
+                scheduler_wave_idx = w_idx
+                break
+        if scheduler_wave_idx is not None:
+            break
+
+    lines.append("def _run():")
+    lines.append("    global _trace")
+    lines.append("")
+
+    if scheduler_wave_idx is not None:
+        _emit_waves(waves[:scheduler_wave_idx], base_indent=4, lines=lines,
+                      instrument=True)
+
+        sched_wave = waves[scheduler_wave_idx]
+        sched_node_data = next(
+            nd for nd in sched_wave if nd["type"] == SchedulerNode.NODE_TYPE
+        )
+        sched_node = _build_node(sched_node_data)
+        node_id = sched_node_data["id"]
+        node_type = sched_node_data["type"]
+        node_label = sched_node_data.get("label", node_type)
+
+        lines.append(f"    _tr_in = {{k: v for k, v in locals().items() if not k.startswith('_')}}")
+        lines.append("    try:")
+        lines.append("        for _run_iter in range(1):")
+        lines.append(f"            _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'input': _tr_in, 'output': {{}}}})")
+
+        _emit_waves(waves[scheduler_wave_idx + 1:], base_indent=8, lines=lines,
+                      instrument=True)
+
+        lines.append("    except Exception as _tr_ex:")
+        lines.append(f"        _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'error', 'input': _tr_in, 'error': str(_tr_ex)}})")
+        lines.append("        raise")
+        lines.append("")
+    else:
+        _emit_waves(waves, base_indent=4, lines=lines, instrument=True)
+
+    lines.append("")
+    lines.append("if __name__ == '__main__':")
+    lines.append("    try:")
+    lines.append("        _run()")
+    lines.append("    except Exception as _tr_ex:")
+    lines.append("        if not _trace or _trace[-1].get('status') != 'error':")
+    lines.append("            _trace.append({'status': 'fatal', 'error': str(_tr_ex)})")
+    lines.append("    finally:")
+    lines.append("        _write_traces()")
 
     return "\n".join(lines)

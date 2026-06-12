@@ -33,7 +33,90 @@ body {
 }
 
 /* ============================================================
-   Top Bar
+   Run Results Panel
+   ============================================================ */
+#run-panel {
+  height: 220px;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: height .2s;
+}
+#run-panel.hidden { height: 0; overflow: hidden; border-top: none; }
+
+#run-panel-header {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+#run-panel-header h3 { font-size: 13px; font-weight: 700; }
+#run-panel-close { cursor: pointer; color: var(--text-muted); font-size: 18px; line-height: 1; }
+#run-panel-close:hover { color: var(--text); }
+
+#run-panel-body { flex: 1; overflow: auto; padding: 0; }
+
+#run-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+#run-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+#run-table th {
+  background: var(--bg-card);
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+}
+#run-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+#run-table tr:hover td { background: rgba(233,69,96,.05); }
+#run-table .run-ok { border-left: 3px solid var(--accent-green); }
+#run-table .run-err { border-left: 3px solid var(--accent); }
+#run-table .run-ctx {
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  max-width: 300px;
+  word-break: break-all;
+  line-height: 1.5;
+}
+#run-table .run-ctx code {
+  color: var(--accent-yellow);
+  background: rgba(245,166,35,.1);
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+#run-output {
+  background: #0d0d1a;
+  border-top: 1px solid var(--border);
+  padding: 8px 12px;
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+/* ============================================================
+   Scrollbar
    ============================================================ */
 #topbar {
   height: var(--topbar-h);
