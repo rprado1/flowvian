@@ -31,6 +31,7 @@ document.addEventListener('DOMContentLoaded', () => {
   bindSidebar();
   bindPropsPanel();
   bindModals();
+  bindRunPanel();
   loadWorkflows();
 });
 
@@ -271,6 +272,7 @@ function bindTopbar() {
   });
 
   document.getElementById('btn-preview')?.addEventListener('click', previewScript);
+  document.getElementById('btn-run')?.addEventListener('click', runWorkflow);
   document.getElementById('btn-build')?.addEventListener('click', buildExe);
 }
 
@@ -321,6 +323,99 @@ async function previewScript() {
   } catch (e) {
     toast(e.message, 'error');
   }
+}
+
+// ============================================================
+// Run workflow — execute and show per-node results
+// ============================================================
+async function runWorkflow() {
+  if (!currentWfId) return toast('Open a workflow first', 'info');
+  await saveGraph();
+
+  const btn = document.getElementById('btn-run');
+  btn.disabled = true;
+  btn.textContent = 'Running…';
+  toast('Executing workflow…', 'info');
+
+  let data;
+  try {
+    data = await api('POST', `/api/workflows/${currentWfId}/run`);
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '▶ Run';
+    toast(e.message, 'error');
+    return;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ Run';
+  }
+
+  const panel = document.getElementById('run-panel');
+  const tbody = document.getElementById('run-table-body');
+  const outEl = document.getElementById('run-output');
+
+  tbody.innerHTML = '';
+  outEl.style.display = 'none';
+
+  const traces = data.traces || [];
+  if (traces.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:16px">No nodes executed</td></tr>';
+  } else {
+    traces.forEach((tr, i) => {
+      const statusIcon = tr.status === 'ok' ? '✅' : '❌';
+      const statusClass = tr.status === 'ok' ? 'run-ok' : 'run-err';
+      const inputStr = _fmtTraceCtx(tr.input);
+      const outputStr = _fmtTraceCtx(tr.output);
+      const errorStr = tr.status === 'error' ? `<br><span style="color:var(--accent)">${esc(tr.error || '')}</span>` : '';
+
+      const row = document.createElement('tr');
+      row.className = statusClass;
+      row.innerHTML = `
+        <td>${i + 1}</td>
+        <td><strong>${esc(tr.label || tr.id || '?')}</strong></td>
+        <td>${esc(tr.type || '?')}</td>
+        <td>${tr.ts ? new Date(tr.ts * 1000).toLocaleTimeString() : '—'}</td>
+        <td>${statusIcon} ${tr.status}</td>
+        <td class="run-ctx">${inputStr || '<span style="color:var(--text-muted)">—</span>'}</td>
+        <td class="run-ctx">${outputStr || '<span style="color:var(--text-muted)">—</span>'}${errorStr}</td>
+      `;
+      tbody.appendChild(row);
+    });
+  }
+
+  if (data.output) {
+    outEl.style.display = 'block';
+    outEl.textContent = data.output;
+  }
+
+  panel.classList.remove('hidden');
+
+  if (data.error) {
+    toast('Execution finished with errors', 'error');
+  } else {
+    toast('Execution completed', 'success');
+  }
+}
+
+function _fmtTraceCtx(ctx) {
+  if (!ctx || typeof ctx !== 'object') return '';
+  const entries = Object.entries(ctx)
+    .filter(([k]) => !k.startsWith('_'))
+    .slice(0, 20);
+  if (entries.length === 0) return '';
+  return entries.map(([k, v]) => {
+    let val = String(v ?? '');
+    if (val.length > 60) val = val.substring(0, 57) + '...';
+    return `<code>${esc(k)}</code> = ${esc(val)}`;
+  }).join('<br>');
+}
+
+function closeRunPanel() {
+  document.getElementById('run-panel').classList.add('hidden');
+}
+
+function bindRunPanel() {
+  document.getElementById('run-panel-close')?.addEventListener('click', closeRunPanel);
 }
 
 // ============================================================

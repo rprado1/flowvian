@@ -18,6 +18,7 @@
   <div class="spacer"></div>
   <button class="btn btn-outline btn-sm" id="btn-preview" title="Preview generated Python code">Preview Code</button>
   <button class="btn btn-outline btn-sm" id="btn-save"    title="Save workflow">Save</button>
+  <button class="btn btn-primary"        id="btn-run"     title="Run workflow and see results">▶ Run</button>
   <button class="btn btn-success"        id="btn-build"   title="Compile workflow to .exe">⚙ Generate EXE</button>
 </div>
 
@@ -98,6 +99,34 @@
   </aside>
 
 </div><!-- /layout -->
+
+<!-- ============================================================
+     Run Results Panel
+     ============================================================ -->
+<div id="run-panel" class="hidden">
+  <div id="run-panel-header">
+    <h3>▶ Execution Results</h3>
+    <span id="run-panel-close">×</span>
+  </div>
+  <div id="run-panel-body">
+    <table id="run-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Node</th>
+          <th>Type</th>
+          <th>Time</th>
+          <th>Status</th>
+          <th>Input</th>
+          <th>Output</th>
+        </tr>
+      </thead>
+      <tbody id="run-table-body">
+      </tbody>
+    </table>
+    <pre id="run-output" style="display:none"></pre>
+  </div>
+</div>
 
 <!-- ============================================================
      Modals

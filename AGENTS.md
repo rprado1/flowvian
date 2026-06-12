@@ -42,7 +42,13 @@
 
 ## Code generation
 
-- `app/codegen/generator.py` runs Kahn's BFS topological sort on the graph DAG.
+- `app/codegen/generator.py` uses `_topological_waves()` (Kahn's BFS) to group independent nodes into execution **waves** (`list[list[dict]]`).
+- Each wave contains nodes with no inter-dependencies — they may run concurrently.
+- Waves execute sequentially: wave N must finish before wave N+1 starts.
+- **Single-node wave**: emitted inline with no threading overhead.
+- **Multi-node wave**: wrapped in a `ThreadPoolExecutor`; each node gets a `_wave_{i}_branch_{j}()` function, submitted in parallel, and `wait(return_when=ALL_COMPLETED)` ensures all finish before the next wave. Exceptions are re-raised via `.result()`.
+- The generated script imports `from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_COMPLETED as _ALL`.
+- Parallelism is **implicit and topology-driven**: any two nodes at the same topological depth that don't depend on each other are automatically grouped into a wave.
 - A cycle raises `ValueError` (surfaced as a 422 from the build endpoint).
 - Generated scripts are written to `output/{workflow_id}/{safe_name}.py` before PyInstaller runs.
 
