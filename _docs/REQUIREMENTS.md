@@ -24,3 +24,4 @@
 - 7.- Requiero que el flujo de datos en cada nodo sea un array, el primer nodo debe como tener entrada [{"workflowId","executionId","executionDate"}]
 - 8.- El execution id es un id random unico de ejecucion
 - 9.- Cada nodo se debe ejecutar para los n items en el flujo actual
+- 10.- Cada nodo con salida de datos debe tener la opción "Include Other Input Fields"

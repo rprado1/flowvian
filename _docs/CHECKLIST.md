@@ -29,6 +29,10 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | 16 | Botón Run para ejecutar workflow en el portal, con tabla de entrada/salida por nodo | ✅ Completado | Backend: `POST /api/workflows/{id}/run` ejecuta script instrumentado vía subprocess. Frontend: botón ▶ Run en topbar + panel inferior con tabla de resultados por nodo |
 | 17 | Los nodos deben tener un nombre único; al crear uno con tipo ya existente agregar sufijo numérico | ✅ Completado | `generateInstanceName()` en `app/static/js/app.js` asigna el primer nombre disponible. `updateNodeTitle()` actualiza el canvas. El `instanceName` se persiste como `label` en SQLite y se restaura al cargar el grafo |
 | 18 | Al eliminar un nodo con tecla Delete mientras el panel de propiedades está abierto, el panel debe cerrarse y no quedar bloqueado | ✅ Completado | Handler `nodeRemoved` en `app/static/js/app.js` limpia `editor.node_selected` (ref interna de Drawflow al DOM eliminado) y elimina la entrada huérfana de `nodeConfigs` |
+| 19 | El flujo de datos en cada nodo debe ser un array; el primer nodo tiene entrada `[{"workflowId","executionId","executionDate"}]` | ✅ Completado | `_items = [{"workflowId": ..., "executionId": ..., "executionDate": ...}]` en `generate_script()` y `generate_run_script()` |
+| 20 | Execution ID único random por ejecución | ✅ Completado | `EXECUTION_ID = str(uuid.uuid4())` en el script generado |
+| 21 | Cada nodo se ejecuta para los n items en el flujo actual | ✅ Completado | `for _item in _items:` en `_emit_item_loop()` de `app/nodes/base.py` |
+| 22 | Cada nodo con salida de datos debe tener la opción "Include Other Input Fields" | ✅ Completado | Checkbox en PropsForm de cada nodo (frontend). Backend: `include_flag` en `_emit_item_loop()` — mergea `{**_item, **_out}` |
 
 ---
 
@@ -36,7 +40,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 18 |
+| ✅ Completado | 22 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 
