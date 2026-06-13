@@ -77,7 +77,7 @@ def preview(workflow_id):
 
     graph = get_workflow_graph(data_dir(), workflow_id)
     try:
-        script = generate_script(meta["name"], graph["nodes"], graph["edges"])
+        script = generate_script(meta["name"], workflow_id, graph["nodes"], graph["edges"])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 
@@ -97,7 +97,7 @@ def build(workflow_id):
     graph = get_workflow_graph(data_dir(), workflow_id)
 
     try:
-        script = generate_script(meta["name"], graph["nodes"], graph["edges"])
+        script = generate_script(meta["name"], workflow_id, graph["nodes"], graph["edges"])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 
@@ -123,7 +123,7 @@ def build(workflow_id):
         [
             sys.executable,
             os.path.join(os.path.dirname(__file__), "..", "build_worker.py"),
-            job_file, script_path, safe_name, dist_dir, work_dir, spec_dir,
+            job_file, script_path, safe_name, dist_dir, work_dir, spec_dir, workflow_id,
         ],
         # Detach from parent's stdin/stdout so the process is truly independent
         stdin=subprocess.DEVNULL,
@@ -193,7 +193,7 @@ def run_workflow(workflow_id):
     graph = get_workflow_graph(data_dir(), workflow_id)
 
     try:
-        script = generate_run_script(meta["name"], graph["nodes"], graph["edges"])
+        script = generate_run_script(meta["name"], workflow_id, graph["nodes"], graph["edges"])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 

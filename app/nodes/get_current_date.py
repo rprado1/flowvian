@@ -18,6 +18,7 @@ class GetCurrentDateUTCNode(BaseNode):
             errors.append("get_current_date_utc: output_var cannot be empty")
         elif not output_var.isidentifier():
             errors.append(f"get_current_date_utc: output_var '{output_var}' is not a valid Python identifier")
+        # Accept include_other_input_fields (default False)
         return errors
 
     def to_code(self, indent: int = 0) -> str:
@@ -25,7 +26,9 @@ class GetCurrentDateUTCNode(BaseNode):
         lines = [
             "# Get Current Date UTC",
             "from datetime import datetime, timezone",
-            f"{output_var} = datetime.now(timezone.utc)",
-            f'print(f"Current UTC datetime: {{{output_var}}}")',
+            f"_out[{repr(output_var)}] = datetime.now(timezone.utc).isoformat()",
         ]
-        return self._indent("\n".join(lines), indent)
+        code_body = "\n".join(lines)
+        
+        include_flag = self.config.get("include_other_input_fields", False)
+        return self._emit_item_loop(code_body, indent, include_flag)
