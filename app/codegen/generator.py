@@ -307,6 +307,7 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
 
         # Close the loop with time.sleep (indent=4 inside _run)
         lines.append(sched_node.loop_close_code(indent=4))
+        lines.append("        print(json.dumps(_items, default=str))")
         lines.append("")
 
     else:
