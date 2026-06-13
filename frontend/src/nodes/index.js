@@ -30,7 +30,7 @@ export const NODE_META = {
     description: 'Assign key=value pairs',
     inputs: 1,
     outputs: 1,
-    defaultConfig: () => ({ variables: [] }),
+    defaultConfig: () => ({ variables: [], include_other_input_fields: false }),
     PropsForm: SetVariablesPropsForm,
   },
   get_current_date_utc: {
@@ -39,7 +39,7 @@ export const NODE_META = {
     description: 'datetime.now(UTC)',
     inputs: 1,
     outputs: 1,
-    defaultConfig: () => ({ output_var: 'current_date_utc' }),
+    defaultConfig: () => ({ output_var: 'current_date_utc', include_other_input_fields: false }),
     PropsForm: GetCurrentDatePropsForm,
   },
   add_time_to_date: {
@@ -48,7 +48,7 @@ export const NODE_META = {
     description: 'date + timedelta',
     inputs: 1,
     outputs: 1,
-    defaultConfig: () => ({ input_var: '', days: 0, hours: 0, minutes: 0, seconds: 0, output_var: 'new_date' }),
+    defaultConfig: () => ({ input_var: '', days: 0, hours: 0, minutes: 0, seconds: 0, output_var: 'new_date', include_other_input_fields: false }),
     PropsForm: AddTimeToDatePropsForm,
   },
   subtract_time_from_date: {
@@ -57,7 +57,7 @@ export const NODE_META = {
     description: 'date - timedelta',
     inputs: 1,
     outputs: 1,
-    defaultConfig: () => ({ input_var: '', days: 0, hours: 0, minutes: 0, seconds: 0, output_var: 'new_date' }),
+    defaultConfig: () => ({ input_var: '', days: 0, hours: 0, minutes: 0, seconds: 0, output_var: 'new_date', include_other_input_fields: false }),
     PropsForm: SubtractTimeFromDatePropsForm,
   },
 };

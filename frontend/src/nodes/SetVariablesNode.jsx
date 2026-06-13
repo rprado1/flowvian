@@ -2,6 +2,7 @@ import BaseNode from './BaseNode';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // ── Canvas card ────────────────────────────────────────────────────────
 export default function SetVariablesNode({ data }) {
@@ -58,6 +59,22 @@ export function SetVariablesPropsForm({ config, onChange }) {
       <Button variant="outline" size="sm" className="w-full mt-1" onClick={addVar}>
         + Add variable
       </Button>
+      
+      <div className="flex items-center gap-2 pt-2">
+        <Checkbox
+          id="include-input-fields-sv"
+          checked={config.include_other_input_fields || false}
+          onCheckedChange={(checked) =>
+            onChange({ ...config, include_other_input_fields: checked })
+          }
+        />
+        <Label
+          htmlFor="include-input-fields-sv"
+          className="text-sm text-muted-foreground cursor-pointer"
+        >
+          Include Other Input Fields
+        </Label>
+      </div>
     </div>
   );
 }

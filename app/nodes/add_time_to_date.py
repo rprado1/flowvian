@@ -49,6 +49,7 @@ class AddTimeToDateNode(BaseNode):
                     f"add_time_to_date: '{field}' must be a number, got '{raw}'"
                 )
 
+        # Accept include_other_input_fields (default False)
         return errors
 
     def to_code(self, indent: int = 0) -> str:
@@ -75,8 +76,11 @@ class AddTimeToDateNode(BaseNode):
 
         lines = [
             "# Add Time to Date",
-            "from datetime import timedelta",
-            f"{output_var} = {input_var} + timedelta({delta_args})",
-            f'print(f"Result datetime: {{{output_var}}}")',
+            "from datetime import datetime, timedelta",
+            f"_input_val = datetime.fromisoformat(_item[{repr(input_var)}])",
+            f"_out[{repr(output_var)}] = (_input_val + timedelta({delta_args})).isoformat()",
         ]
-        return self._indent("\n".join(lines), indent)
+        code_body = "\n".join(lines)
+        
+        include_flag = self.config.get("include_other_input_fields", False)
+        return self._emit_item_loop(code_body, indent, include_flag)

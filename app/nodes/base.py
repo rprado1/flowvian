@@ -35,6 +35,28 @@ class BaseNode(ABC):
         prefix = " " * spaces
         return "\n".join(prefix + line for line in code.splitlines())
 
+    def _emit_item_loop(self, code_body: str, indent: int, include_flag: bool) -> str:
+        """
+        Wraps node code in a for-loop over _items.
+        Each iteration processes one item, produces _out dict.
+        If include_flag is True, _out inherits all fields from _item.
+        """
+        lines = [
+            "_items_out = []",
+            "for _item in _items:",
+            "    _out = {}",
+        ]
+        # Indent the code_body by 4 spaces (inside the for loop)
+        for line in code_body.splitlines():
+            lines.append("    " + line)
+        
+        if include_flag:
+            lines.append("    _out = {**_item, **_out}")
+        lines.append("    _items_out.append(_out)")
+        lines.append("_items = _items_out")
+        
+        return self._indent("\n".join(lines), indent)
+
     @property
     def var_name(self) -> str:
         """Safe Python variable name derived from node id."""
