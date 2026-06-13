@@ -21,3 +21,6 @@
 - Requiero tern en el potal un boton run para ejcutar un workflow, al ejecutar se van ejectuando los ndos, en la parte inferior en una tabla/arbol se muestra los datos de entrada y salida de cada nod ejecutado
 - 5. Requiero que los nodos tengan un nombre unico, cuando se crean tienen el mismo nombre, si se crean nuevos nodos si ya existen nombres similares agregar un sufijo numerico
 - 6.- Cuando selecciono un nodo, se abre el sidebar de configuracion, si doy clic en la tecla suprimiar el nodo se elimina, pero el sidebar conrinua abierto y se bloquea no le puedo cerrar, deberia cerrarse cuando se elimina el nodo
+- 7.- Requiero que el flujo de datos en cada nodo sea un array, el primer nodo debe como tener entrada [{"workflowId","executionId","executionDate"}]
+- 8.- El execution id es un id random unico de ejecucion
+- 9.- Cada nodo se debe ejecutar para los n items en el flujo actual
