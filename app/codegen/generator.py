@@ -36,6 +36,7 @@ SCRIPT_HEADER = '''\
 # ============================================================
 import sys
 import os
+import json
 import logging
 import traceback
 import uuid
@@ -57,6 +58,7 @@ _logger = logging.getLogger(__name__)
 
 WORKFLOW_MAIN_START = '''\
 def _run():
+    global _items
 '''
 
 WORKFLOW_MAIN_END = '''\
@@ -67,6 +69,7 @@ if __name__ == "__main__":
         _logger.error("Unhandled exception:\\n%s", traceback.format_exc())
         print(f"ERROR: {_exc}  (see {_log_path})", file=sys.stderr)
         sys.exit(1)
+    print(json.dumps(_items, default=str))
 '''
 
 
@@ -183,7 +186,7 @@ def _emit_waves(
                 
                 # Each branch works on a local copy of _items
                 inner_pad = " " * (base_indent + 4)
-                lines.append(f"{inner_pad}nonlocal _items")
+                lines.append(f"{inner_pad}global _items")
                 lines.append(f"{inner_pad}_w_items = list(_items)")
                 lines.append(f"{inner_pad}_items = _w_items")
                 
@@ -379,7 +382,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
             break
 
     lines.append("def _run():")
-    lines.append("    global _trace")
+    lines.append("    global _trace, _items")
     lines.append("")
 
     if scheduler_wave_idx is not None:
@@ -419,5 +422,6 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     lines.append("            _trace.append({'status': 'fatal', 'error': str(_tr_ex)})")
     lines.append("    finally:")
     lines.append("        _write_traces()")
+    lines.append("    print(json.dumps(_items, default=str))")
 
     return "\n".join(lines)
