@@ -232,6 +232,34 @@ Notes:
 - Each incoming handle (`in-0`, `in-1`, ...) accepts a single connection.
 - Validation fails if incoming connections do not match `branch_count`.
 
+### 🌐 HTTP Request
+
+Executes HTTP requests per item in the current flow.
+
+Supported methods:
+
+- `GET`
+- `POST`
+
+Capabilities:
+
+- Custom URL
+- Explicit query params for GET
+- Custom headers (key/value)
+- Raw JSON body for POST
+- Variable interpolation in URL/headers/body using `${NOMBRE_VARIABLE}`
+- Configurable timeout (`1..120` seconds)
+
+Node output fields:
+
+- `http_ok`
+- `http_status_code`
+- `http_response_headers`
+- `http_response_body`
+- `http_error_message`
+- `http_method`
+- `http_url_resolved`
+
 ---
 
 ## Node naming
