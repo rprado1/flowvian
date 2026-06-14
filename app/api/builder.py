@@ -13,6 +13,10 @@ from app.codegen.generator import generate_script, validate_graph, generate_run_
 
 builder_bp = Blueprint("builder", __name__)
 
+# Maximum wall-clock time for /run workflow execution.
+# Increased to support Wait nodes with delays > 30 seconds.
+RUN_TIMEOUT_SECONDS = 300
+
 
 def data_dir():
     return current_app.config["DATA_DIR"]
@@ -217,12 +221,12 @@ def run_workflow(workflow_id):
             [sys.executable, run_script_path],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=RUN_TIMEOUT_SECONDS,
             env=env,
         )
     except subprocess.TimeoutExpired:
         return jsonify({
-            "error": "Workflow execution timed out (30s)",
+            "error": f"Workflow execution timed out ({RUN_TIMEOUT_SECONDS}s)",
             "traces": [],
             "output": "",
         }), 500

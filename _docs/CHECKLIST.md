@@ -34,6 +34,13 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | 21 | Cada nodo se ejecuta para los n items en el flujo actual | ✅ Completado | `for _item in _items:` en `_emit_item_loop()` de `app/nodes/base.py` |
 | 22 | Cada nodo con salida de datos debe tener la opción "Include Other Input Fields" | ✅ Completado | Checkbox en PropsForm de cada nodo (frontend). Backend: `include_flag` en `_emit_item_loop()` — mergea `{**_item, **_out}` |
 | 23 | Nodo merge con estrategia append | ✅ Completado | Backend: `app/nodes/merge.py` valida `strategy="append"` y `app/codegen/generator.py` aplica unión explícita en nodos `merge` con múltiples entradas. Frontend: `frontend/src/nodes/MergeNode.jsx` y registro en `frontend/src/nodes/index.js` |
+| 24 | Nodo merge concatena N ramas configurables (`branch_count`) | ✅ Completado | Frontend: handles dinámicos en `frontend/src/nodes/MergeNode.jsx` + input `Branches to combine`. Backend: validación de `branch_count` y de incoming edges en `app/nodes/merge.py` y `app/codegen/generator.py` |
+
+### Fase 3
+
+| # | Requerimiento | Estado | Notas |
+|---|---|---|---|
+| 25 | Nodo Wait por segundos únicamente | ✅ Completado | Backend: `app/nodes/wait.py` (`seconds` >= 0, `time.sleep`). Registro en `NODE_REGISTRY`. Frontend: `frontend/src/nodes/WaitNode.jsx` + `NODE_META.wait` en `frontend/src/nodes/index.js` |
 
 ---
 
@@ -41,10 +48,10 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 23 |
+| ✅ Completado | 25 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 
 ---
 
-_Última actualización: 2026-06-13_
+_Última actualización: 2026-06-14_

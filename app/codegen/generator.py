@@ -20,6 +20,8 @@ from app.nodes.get_current_date import GetCurrentDateUTCNode
 from app.nodes.add_time_to_date import AddTimeToDateNode
 from app.nodes.merge import MergeNode
 from app.nodes.subtract_time_from_date import SubtractTimeFromDateNode
+from app.nodes.wait import WaitNode
+from app.nodes.http_request import HttpRequestNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -29,6 +31,8 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     AddTimeToDateNode.NODE_TYPE: AddTimeToDateNode,
     MergeNode.NODE_TYPE: MergeNode,
     SubtractTimeFromDateNode.NODE_TYPE: SubtractTimeFromDateNode,
+    WaitNode.NODE_TYPE: WaitNode,
+    HttpRequestNode.NODE_TYPE: HttpRequestNode,
 }
 
 SCRIPT_HEADER = '''\
@@ -42,8 +46,15 @@ import json
 import logging
 import traceback
 import uuid
+import re
+import socket
+import ipaddress
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_COMPLETED as _ALL
+from urllib.parse import urlparse
+from urllib.parse import urlencode as _urlencode
+from urllib.request import Request as _UrlRequest, urlopen as _urlopen
+from urllib.error import HTTPError as _HTTPError, URLError as _URLError
 
 # ---- Error log setup ----
 # Log file is placed next to the .exe (or .py when running from source)
@@ -56,6 +67,126 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 _logger = logging.getLogger(__name__)
+
+_TPL_VAR_RE = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
+_MAX_REQUEST_BODY_BYTES = 1_000_000
+_MAX_RESPONSE_BODY_BYTES = 2_000_000
+
+def _resolve_template(_text, _item):
+    if not isinstance(_text, str):
+        return _text
+
+    def _replace(_match):
+        _name = _match.group(1)
+        if _name not in _item:
+            raise ValueError(f"Missing variable: {_name}")
+        _value = _item.get(_name)
+        if _value is None:
+            return ""
+        return str(_value)
+
+    return _TPL_VAR_RE.sub(_replace, _text)
+
+def _resolve_json_template(_obj, _item):
+    if isinstance(_obj, dict):
+        return {str(_k): _resolve_json_template(_v, _item) for _k, _v in _obj.items()}
+    if isinstance(_obj, list):
+        return [_resolve_json_template(_v, _item) for _v in _obj]
+    if isinstance(_obj, str):
+        _m = _TPL_VAR_RE.fullmatch(_obj)
+        if _m:
+            _name = _m.group(1)
+            if _name not in _item:
+                raise ValueError(f"Missing variable: {_name}")
+            return _item.get(_name)
+        return _resolve_template(_obj, _item)
+    return _obj
+
+def _validate_target_url(_url):
+    _parsed = urlparse(_url)
+    if _parsed.scheme not in ("http", "https"):
+        raise ValueError("Only http/https URLs are allowed")
+    if not _parsed.hostname:
+        raise ValueError("URL hostname is required")
+
+    _host = _parsed.hostname
+    try:
+        _infos = socket.getaddrinfo(_host, _parsed.port or (_parsed.scheme == "https" and 443 or 80))
+    except Exception as _dns_ex:
+        raise ValueError(f"Unable to resolve host '{_host}': {_dns_ex}")
+
+    for _info in _infos:
+        _ip_txt = _info[4][0]
+        try:
+            _ip = ipaddress.ip_address(_ip_txt)
+        except ValueError:
+            continue
+        if _ip.is_private or _ip.is_loopback or _ip.is_link_local or _ip.is_multicast or _ip.is_unspecified:
+            raise ValueError(f"Blocked target address: {_ip}")
+
+def _decode_http_body(_raw):
+    if _raw is None:
+        return None
+    try:
+        _text = _raw.decode("utf-8")
+    except Exception:
+        _text = _raw.decode("utf-8", errors="replace")
+    _text = _text.strip()
+    if not _text:
+        return None
+    try:
+        return json.loads(_text)
+    except Exception:
+        return _text
+
+def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
+    _result = {
+        "ok": False,
+        "status_code": None,
+        "response_headers": {},
+        "response_body": None,
+        "error_message": None,
+    }
+
+    _headers = {str(_k): str(_v) for _k, _v in (headers or {}).items()}
+    _data = None
+    if method == "POST":
+        _json_txt = json.dumps(body_obj if body_obj is not None else {})
+        _data = _json_txt.encode("utf-8")
+        if len(_data) > _MAX_REQUEST_BODY_BYTES:
+            raise ValueError(f"Request body too large ({len(_data)} bytes)")
+        if "Content-Type" not in _headers and "content-type" not in {k.lower(): k for k in _headers}:
+            _headers["Content-Type"] = "application/json"
+
+    _req = _UrlRequest(url=url, method=method, headers=_headers, data=_data)
+    try:
+        with _urlopen(_req, timeout=float(timeout_seconds)) as _resp:
+            _raw = _resp.read(_MAX_RESPONSE_BODY_BYTES + 1)
+            if len(_raw) > _MAX_RESPONSE_BODY_BYTES:
+                raise ValueError(f"Response body too large (>{_MAX_RESPONSE_BODY_BYTES} bytes)")
+            _result["ok"] = 200 <= _resp.status < 300
+            _result["status_code"] = int(_resp.status)
+            _result["response_headers"] = dict(_resp.headers.items())
+            _result["response_body"] = _decode_http_body(_raw)
+            if not _result["ok"]:
+                _result["error_message"] = f"HTTP {_resp.status}"
+    except _HTTPError as _http_ex:
+        _raw = _http_ex.read(_MAX_RESPONSE_BODY_BYTES + 1)
+        if len(_raw) > _MAX_RESPONSE_BODY_BYTES:
+            raise ValueError(f"Response body too large (>{_MAX_RESPONSE_BODY_BYTES} bytes)")
+        _result["ok"] = False
+        _result["status_code"] = int(_http_ex.code)
+        _result["response_headers"] = dict(_http_ex.headers.items()) if _http_ex.headers else {}
+        _result["response_body"] = _decode_http_body(_raw)
+        _result["error_message"] = f"HTTP {_http_ex.code}"
+    except TimeoutError:
+        _result["ok"] = False
+        _result["error_message"] = f"Request timeout after {timeout_seconds}s"
+    except _URLError as _url_ex:
+        _result["ok"] = False
+        _result["error_message"] = f"Network error: {_url_ex.reason}"
+
+    return _result
 '''
 
 WORKFLOW_MAIN_START = '''\
@@ -453,13 +584,140 @@ import os
 import json
 import time
 import uuid
+import re
+import socket
+import ipaddress
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_COMPLETED as _ALL
+from urllib.parse import urlparse
+from urllib.parse import urlencode as _urlencode
+from urllib.request import Request as _UrlRequest, urlopen as _urlopen
+from urllib.error import HTTPError as _HTTPError, URLError as _URLError
 
 _trace = []
 _trace_path = os.environ.get("WORKFLOW_TRACE_PATH", "")
 _final_output = {}
 _final_output_path = os.environ.get("WORKFLOW_FINAL_OUTPUT_PATH", "")
+
+_TPL_VAR_RE = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
+_MAX_REQUEST_BODY_BYTES = 1_000_000
+_MAX_RESPONSE_BODY_BYTES = 2_000_000
+
+def _resolve_template(_text, _item):
+    if not isinstance(_text, str):
+        return _text
+
+    def _replace(_match):
+        _name = _match.group(1)
+        if _name not in _item:
+            raise ValueError(f"Missing variable: {_name}")
+        _value = _item.get(_name)
+        if _value is None:
+            return ""
+        return str(_value)
+
+    return _TPL_VAR_RE.sub(_replace, _text)
+
+def _resolve_json_template(_obj, _item):
+    if isinstance(_obj, dict):
+        return {str(_k): _resolve_json_template(_v, _item) for _k, _v in _obj.items()}
+    if isinstance(_obj, list):
+        return [_resolve_json_template(_v, _item) for _v in _obj]
+    if isinstance(_obj, str):
+        _m = _TPL_VAR_RE.fullmatch(_obj)
+        if _m:
+            _name = _m.group(1)
+            if _name not in _item:
+                raise ValueError(f"Missing variable: {_name}")
+            return _item.get(_name)
+        return _resolve_template(_obj, _item)
+    return _obj
+
+def _validate_target_url(_url):
+    _parsed = urlparse(_url)
+    if _parsed.scheme not in ("http", "https"):
+        raise ValueError("Only http/https URLs are allowed")
+    if not _parsed.hostname:
+        raise ValueError("URL hostname is required")
+
+    _host = _parsed.hostname
+    try:
+        _infos = socket.getaddrinfo(_host, _parsed.port or (_parsed.scheme == "https" and 443 or 80))
+    except Exception as _dns_ex:
+        raise ValueError(f"Unable to resolve host '{_host}': {_dns_ex}")
+
+    for _info in _infos:
+        _ip_txt = _info[4][0]
+        try:
+            _ip = ipaddress.ip_address(_ip_txt)
+        except ValueError:
+            continue
+        if _ip.is_private or _ip.is_loopback or _ip.is_link_local or _ip.is_multicast or _ip.is_unspecified:
+            raise ValueError(f"Blocked target address: {_ip}")
+
+def _decode_http_body(_raw):
+    if _raw is None:
+        return None
+    try:
+        _text = _raw.decode("utf-8")
+    except Exception:
+        _text = _raw.decode("utf-8", errors="replace")
+    _text = _text.strip()
+    if not _text:
+        return None
+    try:
+        return json.loads(_text)
+    except Exception:
+        return _text
+
+def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
+    _result = {
+        "ok": False,
+        "status_code": None,
+        "response_headers": {},
+        "response_body": None,
+        "error_message": None,
+    }
+
+    _headers = {str(_k): str(_v) for _k, _v in (headers or {}).items()}
+    _data = None
+    if method == "POST":
+        _json_txt = json.dumps(body_obj if body_obj is not None else {})
+        _data = _json_txt.encode("utf-8")
+        if len(_data) > _MAX_REQUEST_BODY_BYTES:
+            raise ValueError(f"Request body too large ({len(_data)} bytes)")
+        if "Content-Type" not in _headers and "content-type" not in {k.lower(): k for k in _headers}:
+            _headers["Content-Type"] = "application/json"
+
+    _req = _UrlRequest(url=url, method=method, headers=_headers, data=_data)
+    try:
+        with _urlopen(_req, timeout=float(timeout_seconds)) as _resp:
+            _raw = _resp.read(_MAX_RESPONSE_BODY_BYTES + 1)
+            if len(_raw) > _MAX_RESPONSE_BODY_BYTES:
+                raise ValueError(f"Response body too large (>{_MAX_RESPONSE_BODY_BYTES} bytes)")
+            _result["ok"] = 200 <= _resp.status < 300
+            _result["status_code"] = int(_resp.status)
+            _result["response_headers"] = dict(_resp.headers.items())
+            _result["response_body"] = _decode_http_body(_raw)
+            if not _result["ok"]:
+                _result["error_message"] = f"HTTP {_resp.status}"
+    except _HTTPError as _http_ex:
+        _raw = _http_ex.read(_MAX_RESPONSE_BODY_BYTES + 1)
+        if len(_raw) > _MAX_RESPONSE_BODY_BYTES:
+            raise ValueError(f"Response body too large (>{_MAX_RESPONSE_BODY_BYTES} bytes)")
+        _result["ok"] = False
+        _result["status_code"] = int(_http_ex.code)
+        _result["response_headers"] = dict(_http_ex.headers.items()) if _http_ex.headers else {}
+        _result["response_body"] = _decode_http_body(_raw)
+        _result["error_message"] = f"HTTP {_http_ex.code}"
+    except TimeoutError:
+        _result["ok"] = False
+        _result["error_message"] = f"Request timeout after {timeout_seconds}s"
+    except _URLError as _url_ex:
+        _result["ok"] = False
+        _result["error_message"] = f"Network error: {_url_ex.reason}"
+
+    return _result
 
 def _write_traces():
     if _trace_path:

@@ -4,6 +4,8 @@ import GetCurrentDateNode,       { GetCurrentDatePropsForm }       from './GetCu
 import AddTimeToDateNode,        { AddTimeToDatePropsForm }        from './AddTimeToDateNode';
 import SubtractTimeFromDateNode, { SubtractTimeFromDatePropsForm } from './SubtractTimeFromDateNode';
 import MergeNode,                { MergePropsForm }                from './MergeNode';
+import WaitNode,                 { WaitPropsForm }                 from './WaitNode';
+import HttpRequestNode,          { HttpRequestPropsForm }          from './HttpRequestNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -13,6 +15,8 @@ export const nodeTypes = {
   add_time_to_date:        AddTimeToDateNode,
   subtract_time_from_date: SubtractTimeFromDateNode,
   merge:                   MergeNode,
+  wait:                    WaitNode,
+  http_request:            HttpRequestNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -70,5 +74,31 @@ export const NODE_META = {
     outputs: 1,
     defaultConfig: () => ({ strategy: 'append', branch_count: 2 }),
     PropsForm: MergePropsForm,
+  },
+  wait: {
+    label: 'Wait',
+    icon:  '⏳',
+    description: 'Pause for N seconds',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({ seconds: 1 }),
+    PropsForm: WaitPropsForm,
+  },
+  http_request: {
+    label: 'HTTP Request',
+    icon:  '🌐',
+    description: 'GET/POST with headers and JSON body',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      method: 'GET',
+      url: 'https://api.example.com',
+      query_params: [],
+      headers: [],
+      body_raw_json: '{\n  "key": "${VALUE}"\n}',
+      timeout_seconds: 30,
+      include_other_input_fields: true,
+    }),
+    PropsForm: HttpRequestPropsForm,
   },
 };
