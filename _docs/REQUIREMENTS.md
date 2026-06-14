@@ -34,3 +34,4 @@
 - 2.- Requiero un node que me permita hacer peticiones HTTP con los metodos POST y GET, debe permitir enviar custom headers y Body raw json para POST, debe permitir usar valores dentro del flujo pra configurarlo en la URL, Headers o BOdy raw json, para llamarlso se usa ${NOMBRE_VARIABLE}
 - 3.- Requiero que el node set variables me permita definir el tipo de variable: String, Number, Boolean
 - 4. Requiero que el node set variables, tambien permita definir valores para cada key del input en base a ${variable name} similar al node http get, ademas en el node set variables, los inputs deben estar uno por cada lienea, actualmente esta [Input key] [Select type] [Input value], debe ser [Input key] <br> [Select type] <br> [Input value]
+- 5.- Ahora, si en el node set variables el input es un object, por ejemplo {'args': {'country': 'EC'}}, quiero que al definir una varaible, me permitea seleccionra un item dentro dese objecto por ejemplo args

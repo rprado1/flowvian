@@ -20,7 +20,7 @@ export function SetVariablesPropsForm({ config, onChange }) {
 
   const normalizeType = (value) => {
     const t = String(value || 'string').toLowerCase();
-    if (t === 'number' || t === 'boolean' || t === 'array') return t;
+    if (t === 'number' || t === 'boolean' || t === 'array' || t === 'object') return t;
     return 'string';
   };
 
@@ -69,10 +69,17 @@ export function SetVariablesPropsForm({ config, onChange }) {
             <option value="number">Number</option>
             <option value="boolean">Boolean</option>
             <option value="array">Array</option>
+            <option value="object">Object</option>
           </select>
 
           <Input
-            placeholder={normalizeType(v.type) === 'array' ? '["a",1,true] or ${items}' : 'value or ${variable}'}
+            placeholder={
+              normalizeType(v.type) === 'array'
+                ? '["a",1,true] or ${items}'
+                : normalizeType(v.type) === 'object'
+                  ? '{"k":"v"} or ${obj}'
+                  : 'value or ${variable}'
+            }
             value={v.value}
             onChange={e => updateVar(idx, 'value', e.target.value)}
           />

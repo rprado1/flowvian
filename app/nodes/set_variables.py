@@ -74,6 +74,18 @@ class SetVariablesNode(BaseNode):
             raise ValueError("array root must be a list")
         return parsed
 
+    @staticmethod
+    def _parse_object(value):
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            parsed = json.loads(value)
+        else:
+            parsed = json.loads(str(value))
+        if not isinstance(parsed, dict):
+            raise ValueError("object root must be an object")
+        return parsed
+
     def validate(self) -> list[str]:
         errors = []
         variables = self.config.get("variables", [])
@@ -91,7 +103,7 @@ class SetVariablesNode(BaseNode):
                 errors.append(f"set_variables: key '{key}' is not a valid Python identifier")
 
             var_type = self._normalize_type(item.get("type", "string"))
-            if var_type not in ("string", "number", "boolean", "array"):
+            if var_type not in ("string", "number", "boolean", "array", "object"):
                 errors.append(f"set_variables: item {i} has invalid type '{var_type}'")
                 continue
 
@@ -117,6 +129,13 @@ class SetVariablesNode(BaseNode):
                     self._parse_array(value)
                 except Exception:
                     errors.append(f"set_variables: item {i} value must be a valid JSON array")
+            elif var_type == "object":
+                if self._contains_placeholder(value):
+                    continue
+                try:
+                    self._parse_object(value)
+                except Exception:
+                    errors.append(f"set_variables: item {i} value must be a valid JSON object")
         # Accept include_other_input_fields (default False)
         return errors
 
@@ -198,6 +217,22 @@ class SetVariablesNode(BaseNode):
                 lines.append("        _sv_parsed = json.loads(str(_sv_src))")
                 lines.append("        if not isinstance(_sv_parsed, list):")
                 lines.append("            raise ValueError(f\"set_variables: key '{_sv_key}' expected JSON array\")")
+                lines.append("        _out[_sv_key] = _sv_parsed")
+                lines.append("elif _sv_type == 'object':")
+                lines.append("    _sv_m = _TPL_VAR_RE.fullmatch(_sv_raw)")
+                lines.append("    if _sv_m:")
+                lines.append("        _sv_name = _sv_m.group(1)")
+                lines.append("        if _sv_name not in _item:")
+                lines.append("            raise ValueError(" + repr(missing_var_msg) + " + _sv_name)")
+                lines.append("        _sv_src = _item.get(_sv_name)")
+                lines.append("    else:")
+                lines.append("        _sv_src = _resolve_template(_sv_raw, _item)")
+                lines.append("    if isinstance(_sv_src, dict):")
+                lines.append("        _out[_sv_key] = dict(_sv_src)")
+                lines.append("    else:")
+                lines.append("        _sv_parsed = json.loads(str(_sv_src))")
+                lines.append("        if not isinstance(_sv_parsed, dict):")
+                lines.append("            raise ValueError(f\"set_variables: key '{_sv_key}' expected JSON object\")")
                 lines.append("        _out[_sv_key] = _sv_parsed")
                 lines.append("else:")
                 lines.append("    _out[_sv_key] = _resolve_template(_sv_raw, _item)")
