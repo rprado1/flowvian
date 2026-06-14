@@ -149,11 +149,13 @@ def _emit_waves(
         return
 
     subset_nodes = [node_data for wave in waves for node_data in wave]
+    subset_node_map = {node_data["id"]: node_data for node_data in subset_nodes}
     subset_node_ids = [node_data["id"] for node_data in subset_nodes]
     subset_node_ids_set = set(subset_node_ids)
 
     incoming_map: dict[str, list[str]] = {node_id: [] for node_id in subset_node_ids}
     outgoing_internal_count: dict[str, int] = {node_id: 0 for node_id in subset_node_ids}
+    adjacency_internal: dict[str, list[str]] = defaultdict(list)
     for edge in edges:
         src = edge["source_node_id"]
         tgt = edge["target_node_id"]
@@ -161,10 +163,31 @@ def _emit_waves(
             if src not in incoming_map[tgt]:
                 incoming_map[tgt].append(src)
             outgoing_internal_count[src] += 1
+            adjacency_internal[src].append(tgt)
 
     terminal_node_ids = [
         node_id for node_id in subset_node_ids if outgoing_internal_count[node_id] == 0
     ]
+
+    merge_node_ids = {
+        node_id
+        for node_id, node_data in subset_node_map.items()
+        if node_data["type"] == MergeNode.NODE_TYPE
+    }
+    if merge_node_ids:
+        reachable_from_merge = set(merge_node_ids)
+        queue = deque(merge_node_ids)
+        while queue:
+            current_id = queue.popleft()
+            for next_id in adjacency_internal.get(current_id, []):
+                if next_id in reachable_from_merge:
+                    continue
+                reachable_from_merge.add(next_id)
+                queue.append(next_id)
+
+        terminal_node_ids = [
+            node_id for node_id in terminal_node_ids if node_id in reachable_from_merge
+        ]
 
     pad = " " * base_indent
     lines.append(f"{pad}_items_seed = list(_items)")
@@ -305,6 +328,23 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
                 f"[{node_data.get('label', node_id)}] "
                 f"Only 'merge' nodes can have multiple incoming edges "
                 f"(has {incoming_count[node_id]})"
+            )
+
+    for node_data in nodes:
+        if node_data["type"] != MergeNode.NODE_TYPE:
+            continue
+        node_id = node_data["id"]
+        raw_branch_count = node_data.get("config", {}).get("branch_count", 2)
+        try:
+            branch_count = int(raw_branch_count)
+        except (TypeError, ValueError):
+            continue
+        current_incoming = incoming_count[node_id]
+        if current_incoming != branch_count:
+            node_label = node_data.get("label", node_id)
+            errors.append(
+                f"[{node_label}] merge requires {branch_count} incoming edges "
+                f"(has {current_incoming})"
             )
 
     # Per-node validation

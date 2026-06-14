@@ -11,6 +11,15 @@ class MergeNode(BaseNode):
         strategy = self.config.get("strategy", "append")
         if strategy not in ("append",):
             errors.append(f"merge: unknown strategy '{strategy}'")
+
+        branch_count_raw = self.config.get("branch_count", 2)
+        try:
+            branch_count = int(branch_count_raw)
+            if branch_count < 2:
+                errors.append("merge: branch_count must be an integer greater than or equal to 2")
+        except (TypeError, ValueError):
+            errors.append("merge: branch_count must be an integer")
+
         return errors
 
     def to_code(self, indent: int = 0) -> str:

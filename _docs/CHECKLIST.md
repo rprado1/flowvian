@@ -33,6 +33,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | 20 | Execution ID único random por ejecución | ✅ Completado | `EXECUTION_ID = str(uuid.uuid4())` en el script generado |
 | 21 | Cada nodo se ejecuta para los n items en el flujo actual | ✅ Completado | `for _item in _items:` en `_emit_item_loop()` de `app/nodes/base.py` |
 | 22 | Cada nodo con salida de datos debe tener la opción "Include Other Input Fields" | ✅ Completado | Checkbox en PropsForm de cada nodo (frontend). Backend: `include_flag` en `_emit_item_loop()` — mergea `{**_item, **_out}` |
+| 23 | Nodo merge con estrategia append | ✅ Completado | Backend: `app/nodes/merge.py` valida `strategy="append"` y `app/codegen/generator.py` aplica unión explícita en nodos `merge` con múltiples entradas. Frontend: `frontend/src/nodes/MergeNode.jsx` y registro en `frontend/src/nodes/index.js` |
 
 ---
 
@@ -40,10 +41,10 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 22 |
+| ✅ Completado | 23 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 
 ---
 
-_Última actualización: 2026-06-12_
+_Última actualización: 2026-06-13_

@@ -25,4 +25,5 @@
 - 8.- El execution id es un id random unico de ejecucion
 - 9.- Cada nodo se debe ejecutar para los n items en el flujo actual
 - 10.- Cada nodo con salida de datos debe tener la opción "Include Other Input Fields"
-- 11.- Requiere un nodo merge que implemente la estrategia append
+- 11.- Se requiere un nodo `merge` que implemente la estrategia `append`.
+- 12.- Requier que el nodo merbe pueda concatenar n ramas, para esta en la configuracion debe tener el input con el numero de ramas a combinar
