@@ -18,13 +18,19 @@ export default function SetVariablesNode({ data }) {
 export function SetVariablesPropsForm({ config, onChange }) {
   const variables = config.variables || [];
 
+  const normalizeType = (value) => {
+    const t = String(value || 'string').toLowerCase();
+    if (t === 'number' || t === 'boolean' || t === 'array') return t;
+    return 'string';
+  };
+
   const updateVar = (idx, field, value) => {
     const next = variables.map((v, i) => i === idx ? { ...v, [field]: value } : v);
     onChange({ ...config, variables: next });
   };
 
   const addVar = () => {
-    onChange({ ...config, variables: [...variables, { key: '', value: '' }] });
+    onChange({ ...config, variables: [...variables, { key: '', type: 'string', value: '' }] });
   };
 
   const removeVar = (idx) => {
@@ -41,8 +47,18 @@ export function SetVariablesPropsForm({ config, onChange }) {
             value={v.key}
             onChange={e => updateVar(idx, 'key', e.target.value)}
           />
+          <select
+            value={normalizeType(v.type)}
+            onChange={e => updateVar(idx, 'type', e.target.value)}
+            className="rounded-md border border-input bg-background px-2 py-1 text-xs min-w-[92px]"
+          >
+            <option value="string">String</option>
+            <option value="number">Number</option>
+            <option value="boolean">Boolean</option>
+            <option value="array">Array</option>
+          </select>
           <Input
-            placeholder="value"
+            placeholder={normalizeType(v.type) === 'array' ? '["a",1,true]' : 'value'}
             value={v.value}
             onChange={e => updateVar(idx, 'value', e.target.value)}
           />
