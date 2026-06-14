@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import ReactFlow, {
   Background,
+  ConnectionMode,
   Controls,
   MiniMap,
   ReactFlowProvider,
@@ -88,8 +89,35 @@ function FlowCanvas() {
     scheduleSave();
   }, [onEdgesChange, scheduleSave]);
 
+  const canAcceptConnection = useCallback((params, currentEdges) => {
+    if (!params?.source || !params?.target) return false;
+    if (!params.sourceHandle || !params.targetHandle) return false;
+
+    const isDuplicate = currentEdges.some(e => (
+      e.source === params.source
+      && e.target === params.target
+      && e.sourceHandle === params.sourceHandle
+      && e.targetHandle === params.targetHandle
+    ));
+    if (isDuplicate) return false;
+
+    const sameTargetHandleUsed = currentEdges.some(e => (
+      e.target === params.target && e.targetHandle === params.targetHandle
+    ));
+    if (sameTargetHandleUsed) return false;
+
+    return true;
+  }, []);
+
+  const isValidConnection = useCallback((params) => {
+    return canAcceptConnection(params, edges);
+  }, [canAcceptConnection, edges]);
+
   const onConnect = useCallback(params => {
     setEdges(prev => {
+      if (!canAcceptConnection(params, prev)) {
+        return prev;
+      }
       const next = [...prev, {
         id:           `${params.source}_${params.target}_${params.sourceHandle}_${params.targetHandle}`,
         source:       params.source,
@@ -116,6 +144,8 @@ function FlowCanvas() {
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
+        connectionMode={ConnectionMode.Strict}
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         onNodesDelete={onNodesDelete}

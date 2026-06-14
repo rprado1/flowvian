@@ -40,7 +40,36 @@ function fmtItems(items) {
   );
 }
 
-export default function RunPanel({ traces, output, onClose }) {
+export default function RunPanel({ traces, output, finalOutput, onClose }) {
+  const renderFinalOutput = (finalOutput) => {
+    if (!finalOutput || !finalOutput.branches || typeof finalOutput.branches !== 'object') {
+      return null;
+    }
+
+    const entries = Object.entries(finalOutput.branches);
+    if (!entries.length) {
+      return (
+        <div className="mx-4 mt-2 rounded-md border border-border p-2 text-xs text-muted-foreground">
+          Final Output: no terminal branches
+        </div>
+      );
+    }
+
+    return (
+      <div className="mx-4 mt-2 rounded-md border border-border p-2">
+        <div className="text-xs font-semibold mb-2">Final Output (by terminal branch)</div>
+        {entries.map(([branchId, items]) => (
+          <div key={branchId} className="mb-2 last:mb-0">
+            <div className="text-xs text-muted-foreground mb-1">
+              <code className="run-ctx">{branchId}</code>
+            </div>
+            <div className="text-xs">{fmtItems(items)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div id="run-panel" className="flex flex-col" style={{ height: 240, flexShrink: 0 }}>
       {/* Header */}
@@ -55,6 +84,7 @@ export default function RunPanel({ traces, output, onClose }) {
         {output && (
           <pre className="build-log-pre mx-4 mt-2 text-xs" style={{ maxHeight: 80 }}>{output}</pre>
         )}
+        {renderFinalOutput(finalOutput)}
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">

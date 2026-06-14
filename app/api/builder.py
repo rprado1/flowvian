@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 import uuid
 
 from flask import Blueprint, jsonify, current_app, send_file
@@ -202,12 +203,14 @@ def run_workflow(workflow_id):
 
     run_script_path = os.path.join(wf_output_dir, "_run.py")
     trace_path = os.path.join(wf_output_dir, "_trace.json")
+    final_output_path = os.path.join(wf_output_dir, "_final_output.json")
 
     with open(run_script_path, "w", encoding="utf-8") as f:
         f.write(script)
 
     env = os.environ.copy()
     env["WORKFLOW_TRACE_PATH"] = trace_path
+    env["WORKFLOW_FINAL_OUTPUT_PATH"] = final_output_path
 
     try:
         result = subprocess.run(
@@ -238,6 +241,14 @@ def run_workflow(workflow_id):
         except Exception:
             pass
 
+    final_output = None
+    if os.path.exists(final_output_path):
+        try:
+            with open(final_output_path, "r", encoding="utf-8") as f:
+                final_output = json.load(f)
+        except Exception:
+            final_output = None
+
     output = result.stderr + result.stdout
 
     if result.returncode != 0:
@@ -245,11 +256,13 @@ def run_workflow(workflow_id):
             "error": f"Script exited with code {result.returncode}",
             "traces": traces,
             "output": output.strip() or None,
+            "final_output": final_output,
         }), 422
 
     return jsonify({
         "traces": traces,
         "output": output.strip() or None,
+        "final_output": final_output,
     })
 
 

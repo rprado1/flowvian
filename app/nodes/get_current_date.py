@@ -25,7 +25,6 @@ class GetCurrentDateUTCNode(BaseNode):
         output_var = self.config.get("output_var", "current_date_utc").strip() or "current_date_utc"
         lines = [
             "# Get Current Date UTC",
-            "from datetime import datetime, timezone",
             f"_out[{repr(output_var)}] = datetime.now(timezone.utc).isoformat()",
         ]
         code_body = "\n".join(lines)
