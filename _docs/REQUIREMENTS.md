@@ -27,3 +27,7 @@
 - 10.- Cada nodo con salida de datos debe tener la opción "Include Other Input Fields"
 - 11.- Se requiere un nodo `merge` que implemente la estrategia `append`.
 - 12.- Requier que el nodo merbe pueda concatenar n ramas, para esta en la configuracion debe tener el input con el numero de ramas a combinar
+
+#Fase 3
+
+- 1.- Requiero un node Wait, por segundos unicamente

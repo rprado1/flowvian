@@ -20,6 +20,7 @@ from app.nodes.get_current_date import GetCurrentDateUTCNode
 from app.nodes.add_time_to_date import AddTimeToDateNode
 from app.nodes.merge import MergeNode
 from app.nodes.subtract_time_from_date import SubtractTimeFromDateNode
+from app.nodes.wait import WaitNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -29,6 +30,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     AddTimeToDateNode.NODE_TYPE: AddTimeToDateNode,
     MergeNode.NODE_TYPE: MergeNode,
     SubtractTimeFromDateNode.NODE_TYPE: SubtractTimeFromDateNode,
+    WaitNode.NODE_TYPE: WaitNode,
 }
 
 SCRIPT_HEADER = '''\

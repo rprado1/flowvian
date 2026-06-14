@@ -139,7 +139,10 @@ Opens when clicking a node. Shows the configuration form for that node. Close wi
 
 ### Run results panel
 
-Appears after clicking **▶ Run**. Displays a table with each node's execution status, input context, and output context.
+Appears after clicking **▶ Run**. Displays:
+
+- A per-node execution table (`items_in` / `items_out` and status)
+- **Final Output (by terminal branch)**, where each terminal branch is returned separately
 
 ---
 
@@ -214,6 +217,21 @@ Subtracts days, hours, minutes, and/or seconds from an existing datetime variabl
 new_date = source_date - timedelta(minutes=30)
 ```
 
+### ⬡ Merge
+
+Combines multiple incoming branches explicitly using strategy `append`.
+
+| Field | Description |
+|---|---|
+| Strategy | Fixed to `append` |
+| Branches to combine | Number of incoming handles required (`branch_count`, minimum 2) |
+
+Notes:
+
+- Only `merge` nodes can have multiple incoming edges.
+- Each incoming handle (`in-0`, `in-1`, ...) accepts a single connection.
+- Validation fails if incoming connections do not match `branch_count`.
+
 ---
 
 ## Node naming
@@ -233,6 +251,29 @@ Nodes are sorted topologically (Kahn's BFS). Independent nodes at the same depth
 
 - Nodes **before** the Scheduler run once at startup (setup code).
 - Nodes **after** the Scheduler run on every loop iteration.
+
+Dataflow semantics:
+
+- Branches remain isolated by predecessor path.
+- Branches are only combined at explicit `merge` nodes.
+- Final workflow output is computed by **terminal branches** (nodes with no outgoing edges).
+
+Final output contract:
+
+```json
+{
+  "mode": "by_terminal_branch",
+  "branches": {
+    "<terminal_node_id>": [ ...items... ]
+  },
+  "terminals": [
+    {"id":"...", "label":"...", "type":"..."}
+  ],
+  "legacy_items": [ ...flattened items... ]
+}
+```
+
+When using Scheduler, each loop tick starts with a fresh execution context (`executionId`, `executionDate`) and prints the same structured `final_output` format.
 
 ---
 
@@ -281,6 +322,7 @@ workflow-exe/
 │   │   ├── set_variables.py
 │   │   ├── get_current_date.py
 │   │   ├── add_time_to_date.py
+│   │   ├── merge.py
 │   │   └── subtract_time_from_date.py
 │   ├── codegen/
 │   │   └── generator.py       # Topological waves + parallel code generation
@@ -309,6 +351,12 @@ workflow-exe/
 | GET | `/api/workflows/{id}/build/status/{job_id}` | Poll build job status |
 | GET | `/api/workflows/{id}/download` | Download the compiled `.exe` |
 | POST | `/api/workflows/{id}/run` | Execute workflow and return per-node traces |
+
+`POST /run` response includes:
+
+- `traces`: per-node execution trace
+- `output`: raw stdout/stderr
+- `final_output`: terminal-branch structured output (`mode`, `branches`, `terminals`, `legacy_items`)
 
 ---
 

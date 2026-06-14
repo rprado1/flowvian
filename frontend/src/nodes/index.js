@@ -4,6 +4,7 @@ import GetCurrentDateNode,       { GetCurrentDatePropsForm }       from './GetCu
 import AddTimeToDateNode,        { AddTimeToDatePropsForm }        from './AddTimeToDateNode';
 import SubtractTimeFromDateNode, { SubtractTimeFromDatePropsForm } from './SubtractTimeFromDateNode';
 import MergeNode,                { MergePropsForm }                from './MergeNode';
+import WaitNode,                 { WaitPropsForm }                 from './WaitNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -13,6 +14,7 @@ export const nodeTypes = {
   add_time_to_date:        AddTimeToDateNode,
   subtract_time_from_date: SubtractTimeFromDateNode,
   merge:                   MergeNode,
+  wait:                    WaitNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -70,5 +72,14 @@ export const NODE_META = {
     outputs: 1,
     defaultConfig: () => ({ strategy: 'append', branch_count: 2 }),
     PropsForm: MergePropsForm,
+  },
+  wait: {
+    label: 'Wait',
+    icon:  '⏳',
+    description: 'Pause for N seconds',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({ seconds: 1 }),
+    PropsForm: WaitPropsForm,
   },
 };
