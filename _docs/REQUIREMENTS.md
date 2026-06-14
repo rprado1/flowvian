@@ -31,3 +31,4 @@
 #Fase 3
 
 - 1.- Requiero un node Wait, por segundos unicamente
+- 2.- Requiero un node que me permita hacer peticiones HTTP con los metodos POST y GET, debe permitir enviar custom headers y Body raw json para POST, debe permitir usar valores dentro del flujo pra configurarlo en la URL, Headers o BOdy raw json, para llamarlso se usa ${NOMBRE_VARIABLE}
