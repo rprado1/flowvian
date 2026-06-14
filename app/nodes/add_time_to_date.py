@@ -76,7 +76,6 @@ class AddTimeToDateNode(BaseNode):
 
         lines = [
             "# Add Time to Date",
-            "from datetime import datetime, timedelta",
             f"_input_val = datetime.fromisoformat(_item[{repr(input_var)}])",
             f"_out[{repr(output_var)}] = (_input_val + timedelta({delta_args})).isoformat()",
         ]

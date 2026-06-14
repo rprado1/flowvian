@@ -60,7 +60,7 @@ _logger = logging.getLogger(__name__)
 
 WORKFLOW_MAIN_START = '''\
 def _run():
-    global _items
+    global _items, _final_output
 '''
 
 WORKFLOW_MAIN_END = '''\
@@ -71,7 +71,7 @@ if __name__ == "__main__":
         _logger.error("Unhandled exception:\\n%s", traceback.format_exc())
         print(f"ERROR: {_exc}  (see {_log_path})", file=sys.stderr)
         sys.exit(1)
-    print(json.dumps(_items, default=str))
+    print(json.dumps(_final_output, default=str))
 '''
 
 
@@ -169,25 +169,14 @@ def _emit_waves(
         node_id for node_id in subset_node_ids if outgoing_internal_count[node_id] == 0
     ]
 
-    merge_node_ids = {
-        node_id
-        for node_id, node_data in subset_node_map.items()
-        if node_data["type"] == MergeNode.NODE_TYPE
+    terminal_node_meta = {
+        node_id: {
+            "id": node_id,
+            "label": subset_node_map[node_id].get("label", node_id),
+            "type": subset_node_map[node_id]["type"],
+        }
+        for node_id in terminal_node_ids
     }
-    if merge_node_ids:
-        reachable_from_merge = set(merge_node_ids)
-        queue = deque(merge_node_ids)
-        while queue:
-            current_id = queue.popleft()
-            for next_id in adjacency_internal.get(current_id, []):
-                if next_id in reachable_from_merge:
-                    continue
-                reachable_from_merge.add(next_id)
-                queue.append(next_id)
-
-        terminal_node_ids = [
-            node_id for node_id in terminal_node_ids if node_id in reachable_from_merge
-        ]
 
     pad = " " * base_indent
     lines.append(f"{pad}_items_seed = list(_items)")
@@ -295,12 +284,19 @@ def _emit_waves(
                 )
             lines.append("")
 
-    if terminal_node_ids:
-        lines.append(f"{pad}_items = []")
-        for node_id in terminal_node_ids:
-            lines.append(f"{pad}_items.extend(list(_node_items.get({node_id!r}, [])))")
-    else:
-        lines.append(f"{pad}_items = list(_items_seed)")
+    lines.append(f"{pad}_terminal_node_ids = {terminal_node_ids!r}")
+    lines.append(f"{pad}_terminal_node_meta = {terminal_node_meta!r}")
+    lines.append(f"{pad}_terminal_branches = {{}}")
+    for node_id in terminal_node_ids:
+        lines.append(f"{pad}_terminal_branches[{node_id!r}] = list(_node_items.get({node_id!r}, []))")
+
+    lines.append(f"{pad}_items = []")
+    for node_id in terminal_node_ids:
+        lines.append(f"{pad}_items.extend(_terminal_branches[{node_id!r}])")
+
+    lines.append(
+        f"{pad}_final_output = {{'mode': 'by_terminal_branch', 'branches': _terminal_branches, 'terminals': [_terminal_node_meta[_tid] for _tid in _terminal_node_ids], 'legacy_items': list(_items)}}"
+    )
     lines.append("")
 
 
@@ -421,12 +417,22 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         lines.append(sched_node.to_code(indent=4))  # "    while True:"
         lines.append("")
 
+        # Reset execution context on each scheduler tick
+        lines.append("        EXECUTION_ID = str(uuid.uuid4())")
+        lines.append("        _items = [{")
+        lines.append('            "workflowId": WORKFLOW_ID,')
+        lines.append('            "executionId": EXECUTION_ID,')
+        lines.append('            "executionDate": datetime.now(timezone.utc).isoformat()')
+        lines.append("        }]")
+        lines.append("        _final_output = {}")
+        lines.append("")
+
         # Waves after the scheduler → loop body (indent=8, inside while True)
         _emit_waves(waves[scheduler_wave_idx + 1:], edges=edges, base_indent=8, lines=lines)
 
         # Close the loop with time.sleep (indent=4 inside _run)
         lines.append(sched_node.loop_close_code(indent=4))
-        lines.append("        print(json.dumps(_items, default=str))")
+        lines.append("        print(json.dumps(_final_output, default=str))")
         lines.append("")
 
     else:
@@ -452,12 +458,22 @@ from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_CO
 
 _trace = []
 _trace_path = os.environ.get("WORKFLOW_TRACE_PATH", "")
+_final_output = {}
+_final_output_path = os.environ.get("WORKFLOW_FINAL_OUTPUT_PATH", "")
 
 def _write_traces():
     if _trace_path:
         try:
             with open(_trace_path, "w", encoding="utf-8") as _f:
                 json.dump(_trace, _f, default=str, indent=2)
+        except Exception:
+            pass
+
+def _write_final_output():
+    if _final_output_path:
+        try:
+            with open(_final_output_path, "w", encoding="utf-8") as _f:
+                json.dump(_final_output, _f, default=str, indent=2)
         except Exception:
             pass
 '''
@@ -502,7 +518,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
             break
 
     lines.append("def _run():")
-    lines.append("    global _trace, _items")
+    lines.append("    global _trace, _items, _final_output")
     lines.append("")
 
     if scheduler_wave_idx is not None:
@@ -542,6 +558,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     lines.append("            _trace.append({'status': 'fatal', 'error': str(_tr_ex)})")
     lines.append("    finally:")
     lines.append("        _write_traces()")
-    lines.append("    print(json.dumps(_items, default=str))")
+    lines.append("        _write_final_output()")
+    lines.append("    print(json.dumps(_final_output, default=str))")
 
     return "\n".join(lines)

@@ -22,6 +22,7 @@ function AppInner() {
   const [running,     setRunning]     = useState(false);
   const [runTraces,   setRunTraces]   = useState([]);
   const [runOutput,   setRunOutput]   = useState('');
+  const [runFinalOutput, setRunFinalOutput] = useState(null);
   const [showRun,     setShowRun]     = useState(false);
   const [buildLog,    setBuildLog]    = useState(null); // { title, content, success, downloadUrl }
 
@@ -53,6 +54,7 @@ function AppInner() {
       const data = await api('POST', `/api/workflows/${currentWfId}/run`);
       setRunTraces(data.traces || []);
       setRunOutput(data.output || '');
+      setRunFinalOutput(data.final_output || null);
       setShowRun(true);
       if (data.error) toast.error('Execution finished with errors');
       else toast.success('Execution completed');
@@ -101,6 +103,7 @@ function AppInner() {
             <RunPanel
               traces={runTraces}
               output={runOutput}
+              finalOutput={runFinalOutput}
               onClose={() => setShowRun(false)}
             />
           )}
