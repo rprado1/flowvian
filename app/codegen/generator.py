@@ -102,6 +102,56 @@ def _resolve_json_template(_obj, _item):
         return _resolve_template(_obj, _item)
     return _obj
 
+def _resolve_item_path(_item, _path):
+    _path = str(_path or "").strip()
+    if not _path:
+        raise ValueError("Empty path")
+
+    _parts = []
+    _buf = ""
+    _i = 0
+    while _i < len(_path):
+        _ch = _path[_i]
+        if _ch == '.':
+            if _buf:
+                _parts.append(_buf)
+                _buf = ""
+            _i += 1
+            continue
+        if _ch == '[':
+            if _buf:
+                _parts.append(_buf)
+                _buf = ""
+            _j = _path.find(']', _i + 1)
+            if _j < 0:
+                raise ValueError(f"Invalid path syntax '{_path}'")
+            _idx_txt = _path[_i + 1:_j].strip()
+            if not _idx_txt.isdigit():
+                raise ValueError(f"Invalid path index '{_idx_txt}' in '{_path}'")
+            _parts.append(int(_idx_txt))
+            _i = _j + 1
+            continue
+        _buf += _ch
+        _i += 1
+    if _buf:
+        _parts.append(_buf)
+
+    _cur = _item
+    for _p in _parts:
+        if isinstance(_p, int):
+            if not isinstance(_cur, list):
+                raise ValueError(f"Path '{_path}' expected list before index [{_p}]")
+            if _p < 0 or _p >= len(_cur):
+                raise ValueError(f"Path '{_path}' index [{_p}] out of range")
+            _cur = _cur[_p]
+        else:
+            if not isinstance(_cur, dict):
+                raise ValueError(f"Path '{_path}' expected object before key '{_p}'")
+            if _p not in _cur:
+                raise ValueError(f"Path '{_path}' key '{_p}' not found")
+            _cur = _cur[_p]
+    return _cur
+
 def _validate_target_url(_url):
     _parsed = urlparse(_url)
     if _parsed.scheme not in ("http", "https"):
@@ -632,6 +682,56 @@ def _resolve_json_template(_obj, _item):
             return _item.get(_name)
         return _resolve_template(_obj, _item)
     return _obj
+
+def _resolve_item_path(_item, _path):
+    _path = str(_path or "").strip()
+    if not _path:
+        raise ValueError("Empty path")
+
+    _parts = []
+    _buf = ""
+    _i = 0
+    while _i < len(_path):
+        _ch = _path[_i]
+        if _ch == '.':
+            if _buf:
+                _parts.append(_buf)
+                _buf = ""
+            _i += 1
+            continue
+        if _ch == '[':
+            if _buf:
+                _parts.append(_buf)
+                _buf = ""
+            _j = _path.find(']', _i + 1)
+            if _j < 0:
+                raise ValueError(f"Invalid path syntax '{_path}'")
+            _idx_txt = _path[_i + 1:_j].strip()
+            if not _idx_txt.isdigit():
+                raise ValueError(f"Invalid path index '{_idx_txt}' in '{_path}'")
+            _parts.append(int(_idx_txt))
+            _i = _j + 1
+            continue
+        _buf += _ch
+        _i += 1
+    if _buf:
+        _parts.append(_buf)
+
+    _cur = _item
+    for _p in _parts:
+        if isinstance(_p, int):
+            if not isinstance(_cur, list):
+                raise ValueError(f"Path '{_path}' expected list before index [{_p}]")
+            if _p < 0 or _p >= len(_cur):
+                raise ValueError(f"Path '{_path}' index [{_p}] out of range")
+            _cur = _cur[_p]
+        else:
+            if not isinstance(_cur, dict):
+                raise ValueError(f"Path '{_path}' expected object before key '{_p}'")
+            if _p not in _cur:
+                raise ValueError(f"Path '{_path}' key '{_p}' not found")
+            _cur = _cur[_p]
+    return _cur
 
 def _validate_target_url(_url):
     _parsed = urlparse(_url)

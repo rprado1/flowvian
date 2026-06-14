@@ -14,6 +14,7 @@ class SetVariablesNode(BaseNode):
 
     NODE_TYPE = "set_variables"
     _TPL_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+    _PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\]|\.[A-Za-z_][A-Za-z0-9_]*)*$")
 
     @staticmethod
     def _normalize_type(raw_type) -> str:
@@ -29,6 +30,17 @@ class SetVariablesNode(BaseNode):
     @classmethod
     def _contains_placeholder(cls, value) -> bool:
         return isinstance(value, str) and cls._TPL_VAR_RE.search(value) is not None
+
+    @classmethod
+    def _normalize_mode(cls, raw_mode, raw_value) -> str:
+        if raw_mode is None:
+            if cls._contains_placeholder(raw_value):
+                return "template"
+            return "literal"
+        mode = str(raw_mode).strip().lower()
+        if mode in ("literal", "template", "path"):
+            return mode
+        return "literal"
 
     @staticmethod
     def _parse_number(value):
@@ -108,30 +120,39 @@ class SetVariablesNode(BaseNode):
                 continue
 
             value = item.get("value", "")
-            if var_type == "number":
-                if self._contains_placeholder(value):
+            value_mode = self._normalize_mode(item.get("value_mode"), value)
+            if value_mode not in ("literal", "template", "path"):
+                errors.append(f"set_variables: item {i} has invalid value_mode '{value_mode}'")
+                continue
+
+            if value_mode == "path":
+                path_text = str(value).strip()
+                if not path_text:
+                    errors.append(f"set_variables: item {i} has empty path value")
                     continue
+                if self._PATH_RE.fullmatch(path_text) is None:
+                    errors.append(f"set_variables: item {i} has invalid path syntax '{value}'")
+                    continue
+
+            if value_mode in ("template", "path"):
+                continue
+
+            if var_type == "number":
                 try:
                     self._parse_number(value)
                 except Exception:
                     errors.append(f"set_variables: item {i} value '{value}' is not a valid number")
             elif var_type == "boolean":
-                if self._contains_placeholder(value):
-                    continue
                 try:
                     self._parse_boolean(value)
                 except Exception:
                     errors.append(f"set_variables: item {i} value '{value}' is not a valid boolean")
             elif var_type == "array":
-                if self._contains_placeholder(value):
-                    continue
                 try:
                     self._parse_array(value)
                 except Exception:
                     errors.append(f"set_variables: item {i} value must be a valid JSON array")
             elif var_type == "object":
-                if self._contains_placeholder(value):
-                    continue
                 try:
                     self._parse_object(value)
                 except Exception:
@@ -149,23 +170,34 @@ class SetVariablesNode(BaseNode):
                 key = item.get("key", "").strip()
                 value = item.get("value", "")
                 var_type = self._normalize_type(item.get("type", "string"))
+                value_mode = self._normalize_mode(item.get("value_mode"), value)
                 raw_value = "" if value is None else str(value)
                 missing_var_msg = f"set_variables: key '{key}' references missing variable "
 
                 lines.append(f"_sv_key = {repr(key)}")
                 lines.append(f"_sv_type = {repr(var_type)}")
+                lines.append(f"_sv_mode = {repr(value_mode)}")
                 lines.append(f"_sv_raw = {repr(raw_value)}")
-                lines.append("if _sv_type == 'string':")
-                lines.append("    _out[_sv_key] = _resolve_template(_sv_raw, _item)")
-                lines.append("elif _sv_type == 'number':")
-                lines.append("    _sv_m = _TPL_VAR_RE.fullmatch(_sv_raw)")
-                lines.append("    if _sv_m:")
-                lines.append("        _sv_name = _sv_m.group(1)")
-                lines.append("        if _sv_name not in _item:")
-                lines.append("            raise ValueError(" + repr(missing_var_msg) + " + _sv_name)")
-                lines.append("        _sv_src = _item.get(_sv_name)")
-                lines.append("    else:")
+                lines.append("if _sv_mode == 'path':")
+                lines.append("    _sv_src = _resolve_item_path(_item, _sv_raw)")
+                lines.append("elif _sv_mode == 'template':")
+                lines.append("    if _sv_type == 'string':")
                 lines.append("        _sv_src = _resolve_template(_sv_raw, _item)")
+                lines.append("    else:")
+                lines.append("        _sv_m = _TPL_VAR_RE.fullmatch(_sv_raw)")
+                lines.append("        if _sv_m:")
+                lines.append("            _sv_name = _sv_m.group(1)")
+                lines.append("            if _sv_name not in _item:")
+                lines.append("                raise ValueError(" + repr(missing_var_msg) + " + _sv_name)")
+                lines.append("            _sv_src = _item.get(_sv_name)")
+                lines.append("        else:")
+                lines.append("            _sv_src = _resolve_template(_sv_raw, _item)")
+                lines.append("else:")
+                lines.append("    _sv_src = _sv_raw")
+
+                lines.append("if _sv_type == 'string':")
+                lines.append("    _out[_sv_key] = str(_sv_src)")
+                lines.append("elif _sv_type == 'number':")
                 lines.append("    if isinstance(_sv_src, bool):")
                 lines.append("        raise ValueError(f\"set_variables: key '{_sv_key}' expected number, got boolean\")")
                 lines.append("    if isinstance(_sv_src, int):")
@@ -182,14 +214,6 @@ class SetVariablesNode(BaseNode):
                 lines.append("            _sv_num = float(_sv_txt)")
                 lines.append("            _out[_sv_key] = int(_sv_num) if _sv_num.is_integer() else _sv_num")
                 lines.append("elif _sv_type == 'boolean':")
-                lines.append("    _sv_m = _TPL_VAR_RE.fullmatch(_sv_raw)")
-                lines.append("    if _sv_m:")
-                lines.append("        _sv_name = _sv_m.group(1)")
-                lines.append("        if _sv_name not in _item:")
-                lines.append("            raise ValueError(" + repr(missing_var_msg) + " + _sv_name)")
-                lines.append("        _sv_src = _item.get(_sv_name)")
-                lines.append("    else:")
-                lines.append("        _sv_src = _resolve_template(_sv_raw, _item)")
                 lines.append("    if isinstance(_sv_src, bool):")
                 lines.append("        _out[_sv_key] = _sv_src")
                 lines.append("    elif isinstance(_sv_src, int) and _sv_src in (0, 1):")
@@ -203,14 +227,6 @@ class SetVariablesNode(BaseNode):
                 lines.append("        else:")
                 lines.append("            raise ValueError(f\"set_variables: key '{_sv_key}' has invalid boolean value '{_sv_src}'\")")
                 lines.append("elif _sv_type == 'array':")
-                lines.append("    _sv_m = _TPL_VAR_RE.fullmatch(_sv_raw)")
-                lines.append("    if _sv_m:")
-                lines.append("        _sv_name = _sv_m.group(1)")
-                lines.append("        if _sv_name not in _item:")
-                lines.append("            raise ValueError(" + repr(missing_var_msg) + " + _sv_name)")
-                lines.append("        _sv_src = _item.get(_sv_name)")
-                lines.append("    else:")
-                lines.append("        _sv_src = _resolve_template(_sv_raw, _item)")
                 lines.append("    if isinstance(_sv_src, list):")
                 lines.append("        _out[_sv_key] = list(_sv_src)")
                 lines.append("    else:")
@@ -219,14 +235,6 @@ class SetVariablesNode(BaseNode):
                 lines.append("            raise ValueError(f\"set_variables: key '{_sv_key}' expected JSON array\")")
                 lines.append("        _out[_sv_key] = _sv_parsed")
                 lines.append("elif _sv_type == 'object':")
-                lines.append("    _sv_m = _TPL_VAR_RE.fullmatch(_sv_raw)")
-                lines.append("    if _sv_m:")
-                lines.append("        _sv_name = _sv_m.group(1)")
-                lines.append("        if _sv_name not in _item:")
-                lines.append("            raise ValueError(" + repr(missing_var_msg) + " + _sv_name)")
-                lines.append("        _sv_src = _item.get(_sv_name)")
-                lines.append("    else:")
-                lines.append("        _sv_src = _resolve_template(_sv_raw, _item)")
                 lines.append("    if isinstance(_sv_src, dict):")
                 lines.append("        _out[_sv_key] = dict(_sv_src)")
                 lines.append("    else:")
@@ -235,7 +243,7 @@ class SetVariablesNode(BaseNode):
                 lines.append("            raise ValueError(f\"set_variables: key '{_sv_key}' expected JSON object\")")
                 lines.append("        _out[_sv_key] = _sv_parsed")
                 lines.append("else:")
-                lines.append("    _out[_sv_key] = _resolve_template(_sv_raw, _item)")
+                lines.append("    _out[_sv_key] = str(_sv_src)")
             code_body = "\n".join(lines)
         
         include_flag = self.config.get("include_other_input_fields", False)

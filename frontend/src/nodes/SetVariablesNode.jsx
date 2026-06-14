@@ -30,7 +30,7 @@ export function SetVariablesPropsForm({ config, onChange }) {
   };
 
   const addVar = () => {
-    onChange({ ...config, variables: [...variables, { key: '', type: 'string', value: '' }] });
+    onChange({ ...config, variables: [...variables, { key: '', type: 'string', value_mode: 'literal', value: '' }] });
   };
 
   const removeVar = (idx) => {
@@ -72,19 +72,41 @@ export function SetVariablesPropsForm({ config, onChange }) {
             <option value="object">Object</option>
           </select>
 
+          <select
+            value={String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal'))}
+            onChange={e => updateVar(idx, 'value_mode', e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+          >
+            <option value="literal">Literal</option>
+            <option value="template">Template (${`{var}`})</option>
+            <option value="path">Path (input object)</option>
+          </select>
+
           <Input
             placeholder={
-              normalizeType(v.type) === 'array'
-                ? '["a",1,true] or ${items}'
-                : normalizeType(v.type) === 'object'
-                  ? '{"k":"v"} or ${obj}'
-                  : 'value or ${variable}'
+              String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal')) === 'path'
+                ? 'args.country or items[0].id'
+                : normalizeType(v.type) === 'array'
+                  ? '["a",1,true] or ${items}'
+                  : normalizeType(v.type) === 'object'
+                    ? '{"k":"v"} or ${obj}'
+                    : 'value or ${variable}'
             }
             value={v.value}
             onChange={e => updateVar(idx, 'value', e.target.value)}
           />
 
-          <p className="text-[11px] text-muted-foreground">Use <code>${'{'}variable{'}'}</code> to reference flow input values.</p>
+          <p className="text-[11px] text-muted-foreground">
+            {String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal')) === 'path'
+              ? 'Use path notation like args.country or items[0].id.'
+              : 'Use '} 
+            {String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal')) === 'path'
+              ? null
+              : <code>${'{'}variable{'}'}</code>} 
+            {String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal')) === 'path'
+              ? null
+              : ' to reference flow input values.'}
+          </p>
         </div>
       ))}
       <Button variant="outline" size="sm" className="w-full mt-1" onClick={addVar}>
