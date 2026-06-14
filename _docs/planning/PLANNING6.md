@@ -20,14 +20,14 @@ class MergeNode(BaseNode):
 
     def validate(self) -> list[str]:
         errors = []
-        strategy = self.config.get("strategy", "concat")
-        if strategy not in ("concat",):
+        strategy = self.config.get("strategy", "append")
+        if strategy not in ("append",):
             errors.append(f"merge: unknown strategy '{strategy}'")
         return errors
 
     def to_code(self, indent: int = 0) -> str:
         code_body = (
-            "# Merge: concatenate items from all inbound branches\n"
+            "# Merge: append items from all inbound branches\n"
             "pass"
         )
         return self._indent(code_body, indent)
@@ -88,7 +88,7 @@ for node_data in nodes:
 ### `frontend/src/nodes/MergeNode.jsx` (nuevo)
 
 ```jsx
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position } from 'reactflow';
 
 export default function MergeNode({ data }) {
   return (
@@ -111,13 +111,13 @@ export default function MergeNode({ data }) {
 export function MergePropsForm({ config, onChange }) {
   return (
     <div className="space-y-2">
-      <label class="text-xs font-medium">Strategy</label>
+      <label className="text-xs font-medium">Strategy</label>
       <select
-        value={config.strategy || 'concat'}
+        value={config.strategy || 'append'}
         onChange={e => onChange({ ...config, strategy: e.target.value })}
         className="w-full text-xs"
       >
-        <option value="concat">Concatenate</option>
+        <option value="append">Append</option>
       </select>
     </div>
   );
@@ -140,7 +140,7 @@ merge: {
   icon: '⬡',
   inputs: 2,
   outputs: 1,
-  defaultConfig: () => ({ strategy: 'concat' }),
+  defaultConfig: () => ({ strategy: 'append' }),
   PropsForm: MergePropsForm,
 },
 ```
