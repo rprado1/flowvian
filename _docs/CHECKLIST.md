@@ -45,6 +45,9 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | 27 | HTTP Request permite `${NOMBRE_VARIABLE}` en URL, headers y body raw JSON | ✅ Completado | Interpolación implementada en código generado con `_resolve_template` y `_resolve_json_template` (aplica a URL, headers y body). Incluye soporte de query params explícitos para GET |
 | 28 | Set Variables permite tipo por variable (String, Number, Boolean) | ✅ Completado | `app/nodes/set_variables.py` valida y convierte tipos; frontend agrega selector de tipo por fila en `frontend/src/nodes/SetVariablesNode.jsx`. Nota: además se extendió con `Array` y `Object` |
 | 29 | Set Variables soporta `${variable}` y layout vertical por fila (`key`, `type`, `value`) | ✅ Completado | Backend: interpolación por item con placeholders y `value_mode` (`literal/template/path`) en `app/nodes/set_variables.py`. Frontend: layout en líneas separadas y selector de origen de valor en `frontend/src/nodes/SetVariablesNode.jsx` |
+| 30 | Set Variables permite seleccionar un item interno cuando el input es object | ✅ Completado | Implementado mediante `value_mode = path` con resolución `args.country`, `items[0].id`, etc. en `app/nodes/set_variables.py` (`_resolve_item_path`) y UI en `frontend/src/nodes/SetVariablesNode.jsx` |
+| 31 | Nodo IF con `${VARIABLE}`, operador y comparaciones tipadas (string/number/boolean/object/array) | ✅ Completado | Backend: `app/nodes/if_node.py` con validación/evaluación tipada y múltiples condiciones AND/OR. Frontend: `frontend/src/nodes/IfNode.jsx` + registro en `frontend/src/nodes/index.js` |
+| 32 | Nodo Stop and Error | ✅ Completado | Backend: `app/nodes/stop_and_error.py` + manejo de stop local por ejecución actual en `app/codegen/generator.py` (`_StopIterationExecution`). Frontend: `frontend/src/nodes/StopAndErrorNode.jsx` + registro en `frontend/src/nodes/index.js` |
 
 ---
 
@@ -52,10 +55,10 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 29 |
+| ✅ Completado | 32 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 
 ---
 
-_Última actualización: 2026-06-14_
+_Última actualización: 2026-06-15_
