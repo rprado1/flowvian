@@ -41,6 +41,10 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | # | Requerimiento | Estado | Notas |
 |---|---|---|---|
 | 25 | Nodo Wait por segundos únicamente | ✅ Completado | Backend: `app/nodes/wait.py` (`seconds` >= 0, `time.sleep`). Registro en `NODE_REGISTRY`. Frontend: `frontend/src/nodes/WaitNode.jsx` + `NODE_META.wait` en `frontend/src/nodes/index.js` |
+| 26 | Nodo HTTP Request (GET/POST) con headers custom y body raw JSON para POST | ✅ Completado | Backend: `app/nodes/http_request.py` + helpers en `app/codegen/generator.py` (`_perform_http_request`). Frontend: `frontend/src/nodes/HttpRequestNode.jsx` + registro `http_request` en `frontend/src/nodes/index.js` |
+| 27 | HTTP Request permite `${NOMBRE_VARIABLE}` en URL, headers y body raw JSON | ✅ Completado | Interpolación implementada en código generado con `_resolve_template` y `_resolve_json_template` (aplica a URL, headers y body). Incluye soporte de query params explícitos para GET |
+| 28 | Set Variables permite tipo por variable (String, Number, Boolean) | ✅ Completado | `app/nodes/set_variables.py` valida y convierte tipos; frontend agrega selector de tipo por fila en `frontend/src/nodes/SetVariablesNode.jsx`. Nota: además se extendió con `Array` y `Object` |
+| 29 | Set Variables soporta `${variable}` y layout vertical por fila (`key`, `type`, `value`) | ✅ Completado | Backend: interpolación por item con placeholders y `value_mode` (`literal/template/path`) en `app/nodes/set_variables.py`. Frontend: layout en líneas separadas y selector de origen de valor en `frontend/src/nodes/SetVariablesNode.jsx` |
 
 ---
 
@@ -48,7 +52,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 25 |
+| ✅ Completado | 29 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 
