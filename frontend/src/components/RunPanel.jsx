@@ -42,6 +42,17 @@ function fmtItems(items) {
 
 export default function RunPanel({ traces, output, finalOutput, onClose }) {
   const renderFinalOutput = (finalOutput) => {
+    if (finalOutput && finalOutput.status === 'stopped_current_execution') {
+      return (
+        <div className="mx-4 mt-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+          <div className="font-semibold text-amber-700">Execution stopped (current run)</div>
+          <div className="text-muted-foreground mt-1">
+            {finalOutput.stop_reason || 'Execution stopped by Stop and Error node'}
+          </div>
+        </div>
+      );
+    }
+
     if (!finalOutput || !finalOutput.branches || typeof finalOutput.branches !== 'object') {
       return null;
     }
@@ -105,8 +116,11 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
                 </TableCell>
               </TableRow>
             )}
-            {traces.map((tr, i) => (
-              <TableRow key={i} className={`border-border ${tr.status !== 'ok' ? 'run-err' : 'run-ok'}`}>
+            {traces.map((tr, i) => {
+              const isStopped = tr.status === 'stopped_current_execution';
+              const rowClass = isStopped ? 'run-ok' : (tr.status !== 'ok' ? 'run-err' : 'run-ok');
+              return (
+              <TableRow key={i} className={`border-border ${rowClass}`}>
                 <TableCell className="text-xs">{i + 1}</TableCell>
                 <TableCell className="text-xs font-semibold">{tr.label || tr.id || '?'}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{tr.type || '?'}</TableCell>
@@ -114,17 +128,17 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
                   {tr.ts ? new Date(tr.ts * 1000).toLocaleTimeString() : '—'}
                 </TableCell>
                 <TableCell className="text-xs">
-                  {tr.status === 'ok' ? '✅' : '❌'} {tr.status}
+                  {tr.status === 'ok' ? '✅' : (isStopped ? '🛑' : '❌')} {tr.status}
                 </TableCell>
                 <TableCell className="text-xs">{fmtItems(tr.items_in)}</TableCell>
                 <TableCell className="text-xs">
                   {fmtItems(tr.items_out)}
                   {tr.error && (
-                    <span className="block text-destructive">{tr.error}</span>
+                    <span className={`block ${isStopped ? 'text-amber-700' : 'text-destructive'}`}>{tr.error}</span>
                   )}
                 </TableCell>
               </TableRow>
-            ))}
+            )})}
           </TableBody>
         </Table>
       </ScrollArea>
