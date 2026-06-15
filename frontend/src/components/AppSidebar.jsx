@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import {
   Dialog,
@@ -11,7 +10,6 @@ import {
 } from '@/components/ui/dialog';
 import { useWorkflow } from '@/context/WorkflowContext';
 import { NODE_META } from '@/nodes';
-import DeleteModal from './modals/DeleteModal';
 
 const CATEGORY_ORDER = ['Core', 'Date and Time', 'Data', 'Logic', 'Flow Control', 'Network'];
 
@@ -33,17 +31,13 @@ function getCategory(type) {
   return NODE_CATEGORIES[type] || 'Core';
 }
 
-export default function AppSidebar({ onNewWorkflow }) {
+export default function AppSidebar() {
   const {
-    workflows,
     currentWfId,
-    openWorkflow,
-    loadWorkflows,
     addNode,
     recentNodeTypes,
     clearRecentNodeTypes,
   } = useWorkflow();
-  const [delTarget, setDelTarget] = useState(null); // { id, name }
   const [query, setQuery] = useState('');
   const [showNodeModal, setShowNodeModal] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState(() => ({
@@ -54,10 +48,6 @@ export default function AppSidebar({ onNewWorkflow }) {
     'Flow Control': false,
     Network: false,
   }));
-
-  useEffect(() => {
-    loadWorkflows().catch(() => {});
-  }, [loadWorkflows]);
 
   useEffect(() => {
     const onKeyDown = (e) => {
@@ -141,106 +131,69 @@ export default function AppSidebar({ onNewWorkflow }) {
       className="flex flex-col border-r border-border overflow-hidden"
       style={{ width: 'var(--sidebar-w)', flexShrink: 0, background: 'hsl(var(--card))' }}
     >
-      {/* Workflows section */}
       <div className="p-3 flex flex-col gap-2 flex-1 overflow-hidden">
-        <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center justify-between gap-2">
           <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Workflows
+            Nodes
           </span>
-          <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={onNewWorkflow}>
-            + New
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 text-xs"
+            onClick={() => setShowNodeModal(true)}
+            disabled={!currentWfId}
+            title="Open full node selector (Ctrl+K)"
+          >
+            Explore
           </Button>
         </div>
 
-        <div className="flex-1 overflow-y-auto space-y-1">
-          {workflows.length === 0 && (
-            <p className="text-xs text-muted-foreground px-1 py-2">No workflows yet</p>
-          )}
-          {workflows.map(wf => (
-            <div
-              key={wf.id}
-              className={`wf-item ${wf.id === currentWfId ? 'active' : ''}`}
-              onClick={() => openWorkflow(wf.id, wf.name)}
-            >
-              <span className="truncate text-sm">{wf.name}</span>
+        <Input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="Search nodes..."
+          className="h-8 text-xs"
+        />
+
+        {recentEntries.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Recent</span>
               <button
-                className="text-muted-foreground hover:text-destructive transition-colors ml-1 text-base leading-none"
-                title="Delete"
-                onClick={e => { e.stopPropagation(); setDelTarget({ id: wf.id, name: wf.name }); }}
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                onClick={clearRecentNodeTypes}
+                type="button"
               >
-                🗑
+                clear
               </button>
             </div>
-          ))}
-        </div>
-
-        <Separator className="my-2 bg-border" />
-
-        {/* Node palette */}
-        <div className="flex flex-col gap-2 min-h-[240px] overflow-hidden">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Nodes
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => setShowNodeModal(true)}
-              disabled={!currentWfId}
-              title="Open full node selector (Ctrl+K)"
-            >
-              Explore
-            </Button>
-          </div>
-
-          <Input
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search nodes..."
-            className="h-8 text-xs"
-          />
-
-          {recentEntries.length > 0 && (
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">Recent</span>
-                <button
-                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-                  onClick={clearRecentNodeTypes}
-                  type="button"
-                >
-                  clear
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-1">
-                {recentEntries.slice(0, 4).map(entry => renderNodeItem(entry, true))}
-              </div>
+            <div className="grid grid-cols-2 gap-1">
+              {recentEntries.slice(0, 4).map(entry => renderNodeItem(entry, true))}
             </div>
-          )}
-
-          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-            {groupedNodes.map(group => (
-              <div key={group.category} className="rounded-md border border-border/70 bg-muted/20">
-                <button
-                  className="w-full text-left px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors flex items-center justify-between"
-                  type="button"
-                  onClick={() => toggleCategory(group.category)}
-                >
-                  <span>{group.category}</span>
-                  <span>{collapsedCategories[group.category] ? '+' : '-'}</span>
-                </button>
-                {!collapsedCategories[group.category] && (
-                  <div className="p-1 space-y-1">
-                    {group.entries.map(entry => renderNodeItem(entry))}
-                  </div>
-                )}
-              </div>
-            ))}
-            {groupedNodes.length === 0 && (
-              <p className="text-xs text-muted-foreground px-1 py-2">No nodes match your search</p>
-            )}
           </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+          {groupedNodes.map(group => (
+            <div key={group.category} className="rounded-md border border-border/70 bg-muted/20">
+              <button
+                className="w-full text-left px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors flex items-center justify-between"
+                type="button"
+                onClick={() => toggleCategory(group.category)}
+              >
+                <span>{group.category}</span>
+                <span>{collapsedCategories[group.category] ? '+' : '-'}</span>
+              </button>
+              {!collapsedCategories[group.category] && (
+                <div className="p-1 space-y-1">
+                  {group.entries.map(entry => renderNodeItem(entry))}
+                </div>
+              )}
+            </div>
+          ))}
+          {groupedNodes.length === 0 && (
+            <p className="text-xs text-muted-foreground px-1 py-2">No nodes match your search</p>
+          )}
         </div>
       </div>
 
@@ -280,17 +233,6 @@ export default function AppSidebar({ onNewWorkflow }) {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Delete confirm modal */}
-      {delTarget && (
-        <DeleteModal
-          open={!!delTarget}
-          wfId={delTarget.id}
-          wfName={delTarget.name}
-          onClose={() => setDelTarget(null)}
-          onDeleted={() => setDelTarget(null)}
-        />
-      )}
     </aside>
   );
 }

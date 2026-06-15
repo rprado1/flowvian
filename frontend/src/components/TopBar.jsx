@@ -3,6 +3,7 @@ import { useWorkflow } from '@/context/WorkflowContext';
 
 export default function TopBar({
   onRename, onPreview, onSave, onRun, onBuild,
+  onBackToWorkspaces,
   running, building,
 }) {
   const { currentWfName, currentWfId } = useWorkflow();
@@ -13,6 +14,12 @@ export default function TopBar({
       style={{ height: 'var(--topbar-h)', flexShrink: 0, background: 'hsl(var(--card))' }}
     >
       <span className="font-bold text-sm text-primary mr-2">⚡ WorkflowEXE</span>
+
+      {onBackToWorkspaces && (
+        <Button variant="outline" size="sm" onClick={onBackToWorkspaces}>
+          ← Workspaces
+        </Button>
+      )}
 
       <button
         className="text-sm font-medium text-foreground hover:text-primary transition-colors cursor-pointer bg-transparent border-0"
