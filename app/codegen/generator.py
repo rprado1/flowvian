@@ -23,6 +23,7 @@ from app.nodes.subtract_time_from_date import SubtractTimeFromDateNode
 from app.nodes.wait import WaitNode
 from app.nodes.http_request import HttpRequestNode
 from app.nodes.if_node import IfNode
+from app.nodes.stop_and_error import StopAndErrorNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -35,6 +36,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     WaitNode.NODE_TYPE: WaitNode,
     HttpRequestNode.NODE_TYPE: HttpRequestNode,
     IfNode.NODE_TYPE: IfNode,
+    StopAndErrorNode.NODE_TYPE: StopAndErrorNode,
 }
 
 SCRIPT_HEADER = '''\
@@ -73,6 +75,13 @@ _logger = logging.getLogger(__name__)
 _TPL_VAR_RE = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 _MAX_REQUEST_BODY_BYTES = 1_000_000
 _MAX_RESPONSE_BODY_BYTES = 2_000_000
+
+class _StopIterationExecution(Exception):
+    def __init__(self, message, node_id=None, node_type=None):
+        super().__init__(str(message))
+        self.message = str(message)
+        self.node_id = node_id
+        self.node_type = node_type
 
 def _resolve_template(_text, _item):
     if not isinstance(_text, str):
@@ -250,6 +259,16 @@ WORKFLOW_MAIN_END = '''\
 if __name__ == "__main__":
     try:
         _run()
+    except _StopIterationExecution as _stop_ex:
+        _final_output = {
+            'status': 'stopped_current_execution',
+            'stop_reason': _stop_ex.message,
+            'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type},
+            'mode': 'stopped',
+            'branches': {},
+            'terminals': [],
+            'legacy_items': [],
+        }
     except Exception as _exc:
         _logger.error("Unhandled exception:\\n%s", traceback.format_exc())
         print(f"ERROR: {_exc}  (see {_log_path})", file=sys.stderr)
@@ -439,6 +458,9 @@ def _emit_waves(
                 lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after}})")
                 lines.append(f"{pad}    _node_items[{node_id!r}] = _items_after")
                 lines.append(f"{pad}    _node_outputs[{node_id!r}] = _node_outputs_norm")
+                lines.append(f"{pad}except _StopIterationExecution as _stop_ex:")
+                lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'stopped_current_execution', 'ts': time.time(), 'items_in': _items_before, 'error': _stop_ex.message}})")
+                lines.append(f"{pad}    raise")
                 lines.append(f"{pad}except Exception as _tr_ex:")
                 lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'error', 'ts': time.time(), 'items_in': _items_before, 'error': str(_tr_ex)}})")
                 lines.append(f"{pad}    raise")
@@ -496,6 +518,9 @@ def _emit_waves(
                     lines.append(f"{inner_pad}        _node_outputs_norm['output_1'] = list(_items_after)")
                     lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after}})")
                     lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm}}")
+                    lines.append(f"{inner_pad}except _StopIterationExecution as _stop_ex:")
+                    lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'stopped_current_execution', 'ts': time.time(), 'items_in': _items_before, 'error': _stop_ex.message}})")
+                    lines.append(f"{inner_pad}    raise")
                     lines.append(f"{inner_pad}except Exception as _tr_ex:")
                     lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'error', 'ts': time.time(), 'items_in': _items_before, 'error': str(_tr_ex)}})")
                     lines.append(f"{inner_pad}    raise")
@@ -656,7 +681,13 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
 
     if scheduler_wave_idx is not None:
         # Waves before the scheduler → setup code (indent=4, inside _run)
-        _emit_waves(waves[:scheduler_wave_idx], edges=edges, base_indent=4, lines=lines)
+        if waves[:scheduler_wave_idx]:
+            lines.append("    try:")
+            _emit_waves(waves[:scheduler_wave_idx], edges=edges, base_indent=8, lines=lines)
+            lines.append("    except _StopIterationExecution as _stop_ex:")
+            lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
+            lines.append("        return")
+            lines.append("")
 
         # Scheduler wave: find the node and emit the while-True header
         sched_wave = waves[scheduler_wave_idx]
@@ -678,7 +709,13 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         lines.append("")
 
         # Waves after the scheduler → loop body (indent=8, inside while True)
-        _emit_waves(waves[scheduler_wave_idx + 1:], edges=edges, base_indent=8, lines=lines)
+        post_scheduler_waves = waves[scheduler_wave_idx + 1:]
+        if post_scheduler_waves:
+            lines.append("        try:")
+            _emit_waves(post_scheduler_waves, edges=edges, base_indent=12, lines=lines)
+            lines.append("        except _StopIterationExecution as _stop_ex:")
+            lines.append("            _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
+            lines.append("")
 
         # Close the loop with time.sleep (indent=4 inside _run)
         lines.append(sched_node.loop_close_code(indent=4))
@@ -687,7 +724,10 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
 
     else:
         # No scheduler — all waves run sequentially inside _run (indent=4)
-        _emit_waves(waves, edges=edges, base_indent=4, lines=lines)
+        lines.append("    try:")
+        _emit_waves(waves, edges=edges, base_indent=8, lines=lines)
+        lines.append("    except _StopIterationExecution as _stop_ex:")
+        lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
 
     lines.append(WORKFLOW_MAIN_END)
 
@@ -721,6 +761,13 @@ _final_output_path = os.environ.get("WORKFLOW_FINAL_OUTPUT_PATH", "")
 _TPL_VAR_RE = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 _MAX_REQUEST_BODY_BYTES = 1_000_000
 _MAX_RESPONSE_BODY_BYTES = 2_000_000
+
+class _StopIterationExecution(Exception):
+    def __init__(self, message, node_id=None, node_type=None):
+        super().__init__(str(message))
+        self.message = str(message)
+        self.node_id = node_id
+        self.node_type = node_type
 
 def _resolve_template(_text, _item):
     if not isinstance(_text, str):
@@ -949,8 +996,14 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     lines.append("")
 
     if scheduler_wave_idx is not None:
-        _emit_waves(waves[:scheduler_wave_idx], edges=edges, base_indent=4, lines=lines,
-                      instrument=True)
+        if waves[:scheduler_wave_idx]:
+            lines.append("    try:")
+            _emit_waves(waves[:scheduler_wave_idx], edges=edges, base_indent=8, lines=lines,
+                          instrument=True)
+            lines.append("    except _StopIterationExecution as _stop_ex:")
+            lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
+            lines.append("        return")
+            lines.append("")
 
         sched_wave = waves[scheduler_wave_idx]
         sched_node_data = next(
@@ -966,20 +1019,31 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("        for _run_iter in range(1):")
         lines.append(f"            _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': list(_items)}})")
 
-        _emit_waves(waves[scheduler_wave_idx + 1:], edges=edges, base_indent=8, lines=lines,
-                      instrument=True)
+        post_scheduler_waves = waves[scheduler_wave_idx + 1:]
+        if post_scheduler_waves:
+            lines.append("        try:")
+            _emit_waves(post_scheduler_waves, edges=edges, base_indent=12, lines=lines,
+                          instrument=True)
+            lines.append("        except _StopIterationExecution as _stop_ex:")
+            lines.append("            _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
+            lines.append("")
 
         lines.append("    except Exception as _tr_ex:")
         lines.append(f"        _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'error', 'items_in': _items_before, 'error': str(_tr_ex)}})")
         lines.append("        raise")
         lines.append("")
     else:
-        _emit_waves(waves, edges=edges, base_indent=4, lines=lines, instrument=True)
+        lines.append("    try:")
+        _emit_waves(waves, edges=edges, base_indent=8, lines=lines, instrument=True)
+        lines.append("    except _StopIterationExecution as _stop_ex:")
+        lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
 
     lines.append("")
     lines.append("if __name__ == '__main__':")
     lines.append("    try:")
     lines.append("        _run()")
+    lines.append("    except _StopIterationExecution as _stop_ex:")
+    lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
     lines.append("    except Exception as _tr_ex:")
     lines.append("        if not _trace or _trace[-1].get('status') != 'error':")
     lines.append("            _trace.append({'status': 'fatal', 'error': str(_tr_ex)})")

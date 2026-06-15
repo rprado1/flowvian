@@ -7,6 +7,7 @@ import MergeNode,                { MergePropsForm }                from './Merge
 import WaitNode,                 { WaitPropsForm }                 from './WaitNode';
 import HttpRequestNode,          { HttpRequestPropsForm }          from './HttpRequestNode';
 import IfNode,                   { IfPropsForm }                   from './IfNode';
+import StopAndErrorNode,         { StopAndErrorPropsForm }         from './StopAndErrorNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -19,6 +20,7 @@ export const nodeTypes = {
   wait:                    WaitNode,
   http_request:            HttpRequestNode,
   if:                      IfNode,
+  stop_and_error:          StopAndErrorNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -125,5 +127,16 @@ export const NODE_META = {
       ],
     }),
     PropsForm: IfPropsForm,
+  },
+  stop_and_error: {
+    label: 'Stop and Error',
+    icon:  '⛔',
+    description: 'Stop current execution with custom message',
+    inputs: 1,
+    outputs: 0,
+    defaultConfig: () => ({
+      message: 'Execution stopped by business rule',
+    }),
+    PropsForm: StopAndErrorPropsForm,
   },
 };
