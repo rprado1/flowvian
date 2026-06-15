@@ -48,6 +48,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | 30 | Set Variables permite seleccionar un item interno cuando el input es object | ✅ Completado | Implementado mediante `value_mode = path` con resolución `args.country`, `items[0].id`, etc. en `app/nodes/set_variables.py` (`_resolve_item_path`) y UI en `frontend/src/nodes/SetVariablesNode.jsx` |
 | 31 | Nodo IF con `${VARIABLE}`, operador y comparaciones tipadas (string/number/boolean/object/array) | ✅ Completado | Backend: `app/nodes/if_node.py` con validación/evaluación tipada y múltiples condiciones AND/OR. Frontend: `frontend/src/nodes/IfNode.jsx` + registro en `frontend/src/nodes/index.js` |
 | 32 | Nodo Stop and Error | ✅ Completado | Backend: `app/nodes/stop_and_error.py` + manejo de stop local por ejecución actual en `app/codegen/generator.py` (`_StopIterationExecution`). Frontend: `frontend/src/nodes/StopAndErrorNode.jsx` + registro en `frontend/src/nodes/index.js` |
+| 33 | Nodo Split con `${VARIABLE}` tipo array y opción Include Other Input Fields | ✅ Completado | Backend: `app/nodes/split.py` valida placeholder y tipo array, y expande 1->N items. Registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/SplitNode.jsx` + `NODE_META.split` en `frontend/src/nodes/index.js` |
 
 ---
 
@@ -55,7 +56,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 32 |
+| ✅ Completado | 33 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 

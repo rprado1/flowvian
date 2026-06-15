@@ -37,3 +37,4 @@
 - 5.- Ahora, si en el node set variables el input es un object, por ejemplo {'args': {'country': 'EC'}}, quiero que al definir una varaible, me permitea seleccionra un item dentro dese objecto por ejemplo args
 - 6.- Requiero implemental el nodo if, debe tener un input en donde ingresara una varible del flujo en formato ${VARIABLE} un selector de la condicion a evaluar y otro input para ingresar un valor o variable a compara, considerar que los tipos de datos a comparar: string, number, boolean, object y array, por lo ntanto existen diferentes comparaciones dependiendo del tipo por ejmplo
 - 7.- Requiero implementar el nodo Stop and Error
+- 8.- Requiero implementar el nodo Split, que permite ingresar una variable en el formato ${VARIABLE} que debe ser del tipo array, y los separa en varios items dentro del flujo, debe tener la opcion Include Other Input Fields para cada nuevo item

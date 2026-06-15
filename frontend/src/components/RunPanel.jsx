@@ -40,6 +40,47 @@ function fmtItems(items) {
   );
 }
 
+function fmtIfEvaluations(debug) {
+  const evaluations = Array.isArray(debug?.if_evaluations) ? debug.if_evaluations : [];
+  if (!evaluations.length) return null;
+
+  return (
+    <div className="mt-2 space-y-2">
+      {evaluations.slice(0, 10).map((ev, idx) => {
+        const conditions = Array.isArray(ev.conditions) ? ev.conditions : [];
+        return (
+          <div key={idx} className="rounded border border-border p-2 bg-muted/30">
+            <div className="text-[11px] font-semibold mb-1">
+              Item #{idx + 1} - Final: {ev.final_result ? 'True' : 'False'}
+            </div>
+            {conditions.map((c, cidx) => (
+              <div key={cidx} className="text-[11px] leading-5">
+                {cidx > 0 && c.join && (
+                  <span className="font-semibold mr-1">{c.join}</span>
+                )}
+                <code className="run-ctx">{c.variable || '${?}'}</code>
+                <span> ({String(c.resolved_value)}) </span>
+                <span>{c.operator} </span>
+                {c.compare_value != null && (
+                  <>
+                    <span>{String(c.compare_value)} </span>
+                    <span className="text-muted-foreground">[{String(c.resolved_compare)}]</span>
+                  </>
+                )}
+                <span> - </span>
+                <span className={c.result ? 'text-emerald-600' : 'text-rose-600'}>{c.result ? 'True' : 'False'}</span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      {evaluations.length > 10 && (
+        <div className="text-[11px] text-muted-foreground">+{evaluations.length - 10} more evaluated items</div>
+      )}
+    </div>
+  );
+}
+
 export default function RunPanel({ traces, output, finalOutput, onClose }) {
   const renderFinalOutput = (finalOutput) => {
     if (finalOutput && finalOutput.status === 'stopped_current_execution') {
@@ -133,6 +174,7 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
                 <TableCell className="text-xs">{fmtItems(tr.items_in)}</TableCell>
                 <TableCell className="text-xs">
                   {fmtItems(tr.items_out)}
+                  {tr.type === 'if' && fmtIfEvaluations(tr.debug)}
                   {tr.error && (
                     <span className={`block ${isStopped ? 'text-amber-700' : 'text-destructive'}`}>{tr.error}</span>
                   )}
