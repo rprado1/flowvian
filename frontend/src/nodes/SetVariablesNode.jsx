@@ -18,13 +18,19 @@ export default function SetVariablesNode({ data }) {
 export function SetVariablesPropsForm({ config, onChange }) {
   const variables = config.variables || [];
 
+  const normalizeType = (value) => {
+    const t = String(value || 'string').toLowerCase();
+    if (t === 'number' || t === 'boolean' || t === 'array' || t === 'object') return t;
+    return 'string';
+  };
+
   const updateVar = (idx, field, value) => {
     const next = variables.map((v, i) => i === idx ? { ...v, [field]: value } : v);
     onChange({ ...config, variables: next });
   };
 
   const addVar = () => {
-    onChange({ ...config, variables: [...variables, { key: '', value: '' }] });
+    onChange({ ...config, variables: [...variables, { key: '', type: 'string', value_mode: 'literal', value: '' }] });
   };
 
   const removeVar = (idx) => {
@@ -35,25 +41,72 @@ export function SetVariablesPropsForm({ config, onChange }) {
     <div className="space-y-3">
       <Label>Variables</Label>
       {variables.map((v, idx) => (
-        <div key={idx} className="var-row">
+        <div key={idx} className="rounded-md border border-border p-2 space-y-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">Variable {idx + 1}</Label>
+            <button
+              type="button"
+              onClick={() => removeVar(idx)}
+              className="text-muted-foreground hover:text-destructive transition-colors px-1 text-sm"
+              title="Remove"
+            >
+              ×
+            </button>
+          </div>
+
           <Input
             placeholder="key"
             value={v.key}
             onChange={e => updateVar(idx, 'key', e.target.value)}
           />
+
+          <select
+            value={normalizeType(v.type)}
+            onChange={e => updateVar(idx, 'type', e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+          >
+            <option value="string">String</option>
+            <option value="number">Number</option>
+            <option value="boolean">Boolean</option>
+            <option value="array">Array</option>
+            <option value="object">Object</option>
+          </select>
+
+          <select
+            value={String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal'))}
+            onChange={e => updateVar(idx, 'value_mode', e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+          >
+            <option value="literal">Literal</option>
+            <option value="template">Template (${`{var}`})</option>
+            <option value="path">Path (input object)</option>
+          </select>
+
           <Input
-            placeholder="value"
+            placeholder={
+              String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal')) === 'path'
+                ? 'args.country or items[0].id'
+                : normalizeType(v.type) === 'array'
+                  ? '["a",1,true] or ${items}'
+                  : normalizeType(v.type) === 'object'
+                    ? '{"k":"v"} or ${obj}'
+                    : 'value or ${variable}'
+            }
             value={v.value}
             onChange={e => updateVar(idx, 'value', e.target.value)}
           />
-          <button
-            type="button"
-            onClick={() => removeVar(idx)}
-            className="text-muted-foreground hover:text-destructive transition-colors px-1 text-sm"
-            title="Remove"
-          >
-            ×
-          </button>
+
+          <p className="text-[11px] text-muted-foreground">
+            {String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal')) === 'path'
+              ? 'Use path notation like args.country or items[0].id.'
+              : 'Use '} 
+            {String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal')) === 'path'
+              ? null
+              : <code>${'{'}variable{'}'}</code>} 
+            {String(v.value_mode || (String(v.value || '').includes('${') ? 'template' : 'literal')) === 'path'
+              ? null
+              : ' to reference flow input values.'}
+          </p>
         </div>
       ))}
       <Button variant="outline" size="sm" className="w-full mt-1" onClick={addVar}>

@@ -6,6 +6,7 @@ import SubtractTimeFromDateNode, { SubtractTimeFromDatePropsForm } from './Subtr
 import MergeNode,                { MergePropsForm }                from './MergeNode';
 import WaitNode,                 { WaitPropsForm }                 from './WaitNode';
 import HttpRequestNode,          { HttpRequestPropsForm }          from './HttpRequestNode';
+import IfNode,                   { IfPropsForm }                   from './IfNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -17,6 +18,7 @@ export const nodeTypes = {
   merge:                   MergeNode,
   wait:                    WaitNode,
   http_request:            HttpRequestNode,
+  if:                      IfNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -100,5 +102,28 @@ export const NODE_META = {
       include_other_input_fields: true,
     }),
     PropsForm: HttpRequestPropsForm,
+  },
+  if: {
+    label: 'IF',
+    icon:  '🔀',
+    description: 'Branch by condition (true/false)',
+    inputs: 1,
+    outputs: 2,
+    defaultConfig: () => ({
+      input: '${value}',
+      data_type: 'string',
+      operator: 'equals',
+      compare_value: '',
+      conditions: [
+        {
+          join: 'and',
+          input: '${value}',
+          data_type: 'string',
+          operator: 'equals',
+          compare_value: '',
+        },
+      ],
+    }),
+    PropsForm: IfPropsForm,
   },
 };

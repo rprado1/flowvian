@@ -22,6 +22,7 @@ from app.nodes.merge import MergeNode
 from app.nodes.subtract_time_from_date import SubtractTimeFromDateNode
 from app.nodes.wait import WaitNode
 from app.nodes.http_request import HttpRequestNode
+from app.nodes.if_node import IfNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -33,6 +34,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     SubtractTimeFromDateNode.NODE_TYPE: SubtractTimeFromDateNode,
     WaitNode.NODE_TYPE: WaitNode,
     HttpRequestNode.NODE_TYPE: HttpRequestNode,
+    IfNode.NODE_TYPE: IfNode,
 }
 
 SCRIPT_HEADER = '''\
@@ -101,6 +103,56 @@ def _resolve_json_template(_obj, _item):
             return _item.get(_name)
         return _resolve_template(_obj, _item)
     return _obj
+
+def _resolve_item_path(_item, _path):
+    _path = str(_path or "").strip()
+    if not _path:
+        raise ValueError("Empty path")
+
+    _parts = []
+    _buf = ""
+    _i = 0
+    while _i < len(_path):
+        _ch = _path[_i]
+        if _ch == '.':
+            if _buf:
+                _parts.append(_buf)
+                _buf = ""
+            _i += 1
+            continue
+        if _ch == '[':
+            if _buf:
+                _parts.append(_buf)
+                _buf = ""
+            _j = _path.find(']', _i + 1)
+            if _j < 0:
+                raise ValueError(f"Invalid path syntax '{_path}'")
+            _idx_txt = _path[_i + 1:_j].strip()
+            if not _idx_txt.isdigit():
+                raise ValueError(f"Invalid path index '{_idx_txt}' in '{_path}'")
+            _parts.append(int(_idx_txt))
+            _i = _j + 1
+            continue
+        _buf += _ch
+        _i += 1
+    if _buf:
+        _parts.append(_buf)
+
+    _cur = _item
+    for _p in _parts:
+        if isinstance(_p, int):
+            if not isinstance(_cur, list):
+                raise ValueError(f"Path '{_path}' expected list before index [{_p}]")
+            if _p < 0 or _p >= len(_cur):
+                raise ValueError(f"Path '{_path}' index [{_p}] out of range")
+            _cur = _cur[_p]
+        else:
+            if not isinstance(_cur, dict):
+                raise ValueError(f"Path '{_path}' expected object before key '{_p}'")
+            if _p not in _cur:
+                raise ValueError(f"Path '{_path}' key '{_p}' not found")
+            _cur = _cur[_p]
+    return _cur
 
 def _validate_target_url(_url):
     _parsed = urlparse(_url)
@@ -284,15 +336,17 @@ def _emit_waves(
     subset_node_ids = [node_data["id"] for node_data in subset_nodes]
     subset_node_ids_set = set(subset_node_ids)
 
-    incoming_map: dict[str, list[str]] = {node_id: [] for node_id in subset_node_ids}
+    incoming_map: dict[str, list[tuple[str, str]]] = {node_id: [] for node_id in subset_node_ids}
     outgoing_internal_count: dict[str, int] = {node_id: 0 for node_id in subset_node_ids}
     adjacency_internal: dict[str, list[str]] = defaultdict(list)
     for edge in edges:
         src = edge["source_node_id"]
         tgt = edge["target_node_id"]
         if src in subset_node_ids_set and tgt in subset_node_ids_set:
-            if src not in incoming_map[tgt]:
-                incoming_map[tgt].append(src)
+            src_output = str(edge.get("source_output") or "output_1")
+            pred = (src, src_output)
+            if pred not in incoming_map[tgt]:
+                incoming_map[tgt].append(pred)
             outgoing_internal_count[src] += 1
             adjacency_internal[src].append(tgt)
 
@@ -312,6 +366,7 @@ def _emit_waves(
     pad = " " * base_indent
     lines.append(f"{pad}_items_seed = list(_items)")
     lines.append(f"{pad}_node_items = {{}}")
+    lines.append(f"{pad}_node_outputs = {{}}")
     lines.append("")
 
     def _emit_node_input_setup(node_data: dict, indent: int) -> list[str]:
@@ -325,16 +380,27 @@ def _emit_waves(
             return out
 
         if len(preds) == 1:
-            out.append(f"{line_prefix}_items = list(_node_items.get({preds[0]!r}, []))")
+            pred_id, pred_output = preds[0]
+            out.append(f"{line_prefix}_pred_outputs = _node_outputs.get({pred_id!r}, {{}})")
+            out.append(
+                f"{line_prefix}_items = list(_pred_outputs.get({pred_output!r}, _pred_outputs.get('output_1', [])))"
+            )
             return out
 
         if node_data["type"] == MergeNode.NODE_TYPE:
             out.append(f"{line_prefix}_items = []")
-            for pred in preds:
-                out.append(f"{line_prefix}_items.extend(list(_node_items.get({pred!r}, [])))")
+            for pred_id, pred_output in preds:
+                out.append(f"{line_prefix}_pred_outputs = _node_outputs.get({pred_id!r}, {{}})")
+                out.append(
+                    f"{line_prefix}_items.extend(list(_pred_outputs.get({pred_output!r}, _pred_outputs.get('output_1', []))))"
+                )
             return out
 
-        out.append(f"{line_prefix}_items = list(_node_items.get({preds[0]!r}, []))")
+        pred_id, pred_output = preds[0]
+        out.append(f"{line_prefix}_pred_outputs = _node_outputs.get({pred_id!r}, {{}})")
+        out.append(
+            f"{line_prefix}_items = list(_pred_outputs.get({pred_output!r}, _pred_outputs.get('output_1', [])))"
+        )
         return out
 
     for w_idx, wave in enumerate(waves):
@@ -352,21 +418,47 @@ def _emit_waves(
                 continue
 
             lines.extend(_emit_node_input_setup(node_data, base_indent))
+            lines.append(f"{pad}_branch_outputs = None")
 
             if instrument:
                 lines.append(f"{pad}_items_before = list(_items)")
                 lines.append(f"{pad}try:")
                 lines.append(node.to_code(indent=base_indent + 4))
                 lines.append(f"{pad}    _items_after = list(_items)")
+                lines.append(f"{pad}    _node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
+                lines.append(f"{pad}    _node_outputs_norm = {{}}")
+                lines.append(f"{pad}    for _out_name, _out_items in _node_outputs_raw.items():")
+                lines.append(f"{pad}        if _out_items is None:")
+                lines.append(f"{pad}            _node_outputs_norm[str(_out_name)] = []")
+                lines.append(f"{pad}        elif isinstance(_out_items, list):")
+                lines.append(f"{pad}            _node_outputs_norm[str(_out_name)] = list(_out_items)")
+                lines.append(f"{pad}        else:")
+                lines.append(f"{pad}            raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
+                lines.append(f"{pad}    if 'output_1' not in _node_outputs_norm:")
+                lines.append(f"{pad}        _node_outputs_norm['output_1'] = list(_items_after)")
                 lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after}})")
                 lines.append(f"{pad}    _node_items[{node_id!r}] = _items_after")
+                lines.append(f"{pad}    _node_outputs[{node_id!r}] = _node_outputs_norm")
                 lines.append(f"{pad}except Exception as _tr_ex:")
                 lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'error', 'ts': time.time(), 'items_in': _items_before, 'error': str(_tr_ex)}})")
                 lines.append(f"{pad}    raise")
                 lines.append("")
             else:
                 lines.append(node.to_code(indent=base_indent))
-                lines.append(f"{pad}_node_items[{node_id!r}] = list(_items)")
+                lines.append(f"{pad}_items_after = list(_items)")
+                lines.append(f"{pad}_node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
+                lines.append(f"{pad}_node_outputs_norm = {{}}")
+                lines.append(f"{pad}for _out_name, _out_items in _node_outputs_raw.items():")
+                lines.append(f"{pad}    if _out_items is None:")
+                lines.append(f"{pad}        _node_outputs_norm[str(_out_name)] = []")
+                lines.append(f"{pad}    elif isinstance(_out_items, list):")
+                lines.append(f"{pad}        _node_outputs_norm[str(_out_name)] = list(_out_items)")
+                lines.append(f"{pad}    else:")
+                lines.append(f"{pad}        raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
+                lines.append(f"{pad}if 'output_1' not in _node_outputs_norm:")
+                lines.append(f"{pad}    _node_outputs_norm['output_1'] = list(_items_after)")
+                lines.append(f"{pad}_node_items[{node_id!r}] = _items_after")
+                lines.append(f"{pad}_node_outputs[{node_id!r}] = _node_outputs_norm")
                 lines.append("")
         else:
             # Multi-node wave: each branch resolves inputs from its own predecessors.
@@ -384,20 +476,44 @@ def _emit_waves(
 
                 lines.extend(_emit_node_input_setup(node_data, base_indent + 4))
                 inner_pad = " " * (base_indent + 4)
+                lines.append(f"{inner_pad}_branch_outputs = None")
 
                 if instrument:
                     lines.append(f"{inner_pad}_items_before = list(_items)")
                     lines.append(f"{inner_pad}try:")
                     lines.append(node.to_code(indent=base_indent + 8))
                     lines.append(f"{inner_pad}    _items_after = list(_items)")
+                    lines.append(f"{inner_pad}    _node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
+                    lines.append(f"{inner_pad}    _node_outputs_norm = {{}}")
+                    lines.append(f"{inner_pad}    for _out_name, _out_items in _node_outputs_raw.items():")
+                    lines.append(f"{inner_pad}        if _out_items is None:")
+                    lines.append(f"{inner_pad}            _node_outputs_norm[str(_out_name)] = []")
+                    lines.append(f"{inner_pad}        elif isinstance(_out_items, list):")
+                    lines.append(f"{inner_pad}            _node_outputs_norm[str(_out_name)] = list(_out_items)")
+                    lines.append(f"{inner_pad}        else:")
+                    lines.append(f"{inner_pad}            raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
+                    lines.append(f"{inner_pad}    if 'output_1' not in _node_outputs_norm:")
+                    lines.append(f"{inner_pad}        _node_outputs_norm['output_1'] = list(_items_after)")
                     lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after}})")
-                    lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = _items_after")
+                    lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm}}")
                     lines.append(f"{inner_pad}except Exception as _tr_ex:")
                     lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'error', 'ts': time.time(), 'items_in': _items_before, 'error': str(_tr_ex)}})")
                     lines.append(f"{inner_pad}    raise")
                 else:
                     lines.append(node.to_code(indent=base_indent + 4))
-                    lines.append(f"{inner_pad}_wave_{w_idx}_results[{b_idx}] = list(_items)")
+                    lines.append(f"{inner_pad}_items_after = list(_items)")
+                    lines.append(f"{inner_pad}_node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
+                    lines.append(f"{inner_pad}_node_outputs_norm = {{}}")
+                    lines.append(f"{inner_pad}for _out_name, _out_items in _node_outputs_raw.items():")
+                    lines.append(f"{inner_pad}    if _out_items is None:")
+                    lines.append(f"{inner_pad}        _node_outputs_norm[str(_out_name)] = []")
+                    lines.append(f"{inner_pad}    elif isinstance(_out_items, list):")
+                    lines.append(f"{inner_pad}        _node_outputs_norm[str(_out_name)] = list(_out_items)")
+                    lines.append(f"{inner_pad}    else:")
+                    lines.append(f"{inner_pad}        raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
+                    lines.append(f"{inner_pad}if 'output_1' not in _node_outputs_norm:")
+                    lines.append(f"{inner_pad}    _node_outputs_norm['output_1'] = list(_items_after)")
+                    lines.append(f"{inner_pad}_wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm}}")
                 lines.append("")
 
             submits = ", ".join(
@@ -411,7 +527,10 @@ def _emit_waves(
             for b_idx, node_data in enumerate(wave):
                 node_id = node_data["id"]
                 lines.append(
-                    f"{pad}_node_items[{node_id!r}] = _wave_{w_idx}_results[{b_idx}] or []"
+                    f"{pad}_node_items[{node_id!r}] = (_wave_{w_idx}_results[{b_idx}] or {{}}).get('items', [])"
+                )
+                lines.append(
+                    f"{pad}_node_outputs[{node_id!r}] = (_wave_{w_idx}_results[{b_idx}] or {{}}).get('outputs', {{'output_1': []}})"
                 )
             lines.append("")
 
@@ -632,6 +751,56 @@ def _resolve_json_template(_obj, _item):
             return _item.get(_name)
         return _resolve_template(_obj, _item)
     return _obj
+
+def _resolve_item_path(_item, _path):
+    _path = str(_path or "").strip()
+    if not _path:
+        raise ValueError("Empty path")
+
+    _parts = []
+    _buf = ""
+    _i = 0
+    while _i < len(_path):
+        _ch = _path[_i]
+        if _ch == '.':
+            if _buf:
+                _parts.append(_buf)
+                _buf = ""
+            _i += 1
+            continue
+        if _ch == '[':
+            if _buf:
+                _parts.append(_buf)
+                _buf = ""
+            _j = _path.find(']', _i + 1)
+            if _j < 0:
+                raise ValueError(f"Invalid path syntax '{_path}'")
+            _idx_txt = _path[_i + 1:_j].strip()
+            if not _idx_txt.isdigit():
+                raise ValueError(f"Invalid path index '{_idx_txt}' in '{_path}'")
+            _parts.append(int(_idx_txt))
+            _i = _j + 1
+            continue
+        _buf += _ch
+        _i += 1
+    if _buf:
+        _parts.append(_buf)
+
+    _cur = _item
+    for _p in _parts:
+        if isinstance(_p, int):
+            if not isinstance(_cur, list):
+                raise ValueError(f"Path '{_path}' expected list before index [{_p}]")
+            if _p < 0 or _p >= len(_cur):
+                raise ValueError(f"Path '{_path}' index [{_p}] out of range")
+            _cur = _cur[_p]
+        else:
+            if not isinstance(_cur, dict):
+                raise ValueError(f"Path '{_path}' expected object before key '{_p}'")
+            if _p not in _cur:
+                raise ValueError(f"Path '{_path}' key '{_p}' not found")
+            _cur = _cur[_p]
+    return _cur
 
 def _validate_target_url(_url):
     _parsed = urlparse(_url)
