@@ -40,3 +40,6 @@
 - 8.- Requiero implementar el nodo Split, que permite ingresar una variable en el formato ${VARIABLE} que debe ser del tipo array, y los separa en varios items dentro del flujo, debe tener la opcion Include Other Input Fields para cada nuevo item
 - 9.- Revisar y proponer opciones para mejorar el UX del menu de seleccion de nodos, ya que actualmente hay muchos nodos y la seccion donde se eligen se esta quedando pequena.
 - 10.- Requiero crear el node Filter node, similar a If node, solo que este nuevo nodo no tienen dos salidas, solo una, los items filtrados
+- 11.- Reguiero implemtnar el nodo Aggregate, que es el nod contrario a Split, el nodo agrega en una sola lista todos los items con todos sus campos
+- 12.- Requiero implementar un nodo para formatear una fecha, debe haber un campo para declarar una variable dentro del flujo ${VARIABLE}, un selector de formatos de fechas entro ellos Unix Ms Timestamp y un campo para definir el nombre de la variable con la fecha con formato, debe tener tambien tener el campo Include Other Input Fields
+- 13.- Requiero tener un nodo Sort que me permita ordena la lista del flujo de forma asc o desc de acuerdo a un campo

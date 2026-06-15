@@ -19,6 +19,7 @@ const NODE_CATEGORIES = {
   get_current_date_utc: 'Date and Time',
   add_time_to_date: 'Date and Time',
   subtract_time_from_date: 'Date and Time',
+  format_date: 'Date and Time',
   merge: 'Flow Control',
   wait: 'Flow Control',
   http_request: 'Network',
@@ -26,6 +27,7 @@ const NODE_CATEGORIES = {
   filter: 'Logic',
   stop_and_error: 'Flow Control',
   split: 'Data',
+  aggregate: 'Data',
 };
 
 function getCategory(type) {

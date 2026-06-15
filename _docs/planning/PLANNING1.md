@@ -1,225 +1,193 @@
-# PLANNING1 — Set Variables con tipos (String, Number, Boolean)
+# PLANNING1 - Nodo Aggregate
 
-## Objetivo
+## 1) Objetivo
 
-Extender el nodo `set_variables` para que cada variable pueda declararse con tipo explícito:
+Implementar el nodo `aggregate`, que realiza la operacion contraria a `split`:
 
-- `String`
-- `Number`
-- `Boolean`
-- `Array`
-
-El objetivo es que el valor en `_out` preserve el tipo definido por el usuario y no quede siempre como texto.
+- Toma N items del flujo de entrada.
+- Los combina en un solo item de salida.
+- Dentro de ese item, genera una lista con todos los items originales y sus campos.
 
 ---
 
-## Alcance funcional
+## 2) Alcance funcional
 
-## Comportamiento esperado
+### Incluido
 
-- Cada fila de variable en `Set Variables` tendrá:
-  - `key`
-  - `type` (`string | number | boolean | array`)
-  - `value`
-- El valor se convertirá según el tipo seleccionado:
-  - `string`: siempre `str`
-  - `number`: `int` o `float` según entrada
-  - `boolean`: `true/false` (case-insensitive), también admitir `1/0`
-  - `array`: JSON array válido (p.ej. `[1, "x", true]`)
-- Se mantiene la opción existente `Include Other Input Fields`.
+- Nuevo nodo backend `aggregate`.
+- Una entrada y una salida en frontend.
+- Configuracion para nombre de campo de salida (lista agregada).
+- Opcion para conservar campos de contexto (si aplica).
+- Integracion completa con run/preview/build.
 
-## Compatibilidad hacia atrás
+### No incluido (por ahora)
 
-- Flujos existentes sin campo `type` deben seguir funcionando.
-- Regla de compatibilidad propuesta: si falta `type`, asumir `string`.
+- Estrategias avanzadas de agregacion (sum, group by, distinct, etc.).
+- Agregacion por ventanas o lotes parciales.
+- Agregacion jerarquica por condiciones.
 
 ---
 
-## Diseño técnico propuesto
+## 3) Semantica de ejecucion
 
-## 1) Backend
+Entrada:
 
-### 1.1 `app/nodes/set_variables.py` — validación
+- `_items` = lista de items (cada item es un objeto/dict).
 
-Actualizar `validate()` para cada variable:
+Salida esperada:
 
-- `key` no vacía y válida (como hoy)
-- `type` opcional, default `string`
-- `type` debe pertenecer a `{string, number, boolean, array}`
-- validar el `value` acorde al tipo:
-  - `number`: debe parsear a número
-  - `boolean`: debe ser uno de `true/false/1/0` (case-insensitive)
-  - `array`: debe parsear como JSON y su raíz debe ser lista
+- `_items` con exactamente 1 item.
+- Ese item contiene una propiedad lista que debe ser definida en la configuracion (ej. `items`) con todos los items de entrada.
 
-Mensajes de error sugeridos:
+Ejemplo:
 
-- `set_variables: item {i} has invalid type '{type}'`
-- `set_variables: item {i} value '{value}' is not a valid number`
-- `set_variables: item {i} value '{value}' is not a valid boolean`
-- `set_variables: item {i} value must be a valid JSON array`
+Entrada:
 
-### 1.2 `app/nodes/set_variables.py` — generación de código
-
-Modificar `to_code()` para emitir tipos reales en `_out`:
-
-- `string`:
-  - `_out['k'] = 'valor'`
-- `number`:
-  - convertir a `int` si no hay decimal; si no, `float`
-- `boolean`:
-  - `_out['k'] = True/False`
-- `array`:
-  - parsear JSON array y emitir literal Python equivalente (lista)
-
-Esto evita conversión en runtime y mantiene script generado simple y determinista.
-
----
-
-## 2) Frontend
-
-### 2.1 `frontend/src/nodes/SetVariablesNode.jsx`
-
-Actualizar formulario para cada variable con:
-
-- Input `key`
-- Select `type` (`String`, `Number`, `Boolean`, `Array`)
-- Input `value`
-
-Default al agregar fila:
-
-```js
-{ key: '', type: 'string', value: '' }
+```json
+[
+  { "id": 1, "name": "A" },
+  { "id": 2, "name": "B" }
+]
 ```
 
-### 2.2 UX de edición
+Salida:
 
-- Si el usuario cambia tipo, mantener el texto de `value` y validar en backend.
-- (Opcional recomendado) validación visual ligera en frontend para mejorar UX.
-
-### 2.3 Canvas node (resumen)
-
-- No requiere cambios funcionales.
-- Opcional: mostrar conteo por tipo (`2 string, 1 number`).
+```json
+[
+  {
+    "items": [
+      { "id": 1, "name": "A" },
+      { "id": 2, "name": "B" }
+    ]
+  }
+]
+```
 
 ---
 
-## 3) Modelo de datos del nodo
+## 4) Contrato de configuracion propuesto
 
-## Nuevo esquema por variable
+Config minima:
 
 ```json
 {
-  "variables": [
-    { "key": "name", "type": "string", "value": "john" },
-    { "key": "age", "type": "number", "value": "32" },
-    { "key": "active", "type": "boolean", "value": "true" },
-    { "key": "tags", "type": "array", "value": "[\"vip\", \"beta\"]" }
-  ],
+  "output_var": "items",
   "include_other_input_fields": false
 }
 ```
 
-Compatibilidad legacy:
+Reglas:
 
-```json
-{ "key": "x", "value": "1" }
-```
-
-Se interpreta como `type = string`.
-
----
-
-## 4) Reglas de conversión
-
-## Number
-
-- `int`: `^-?\d+$`
-- `float`: `^-?\d+\.\d+$`
-- Si parsea como entero exacto, generar `int`; si no, `float`.
-
-## Boolean
-
-Valores aceptados (case-insensitive):
-
-- verdaderos: `true`, `1`
-- falsos: `false`, `0`
-
-Se generan como literales Python `True` / `False`.
-
-## String
-
-- Se guarda tal cual como cadena (`str(value)`).
-
-## Array
-
-- `value` debe ser JSON válido y su raíz una lista.
-- Se permite contenido mixto JSON (`string`, `number`, `boolean`, `object`, `array`, `null`).
-- El valor final en `_out` debe ser una lista Python.
+- `output_var`:
+  - requerido,
+  - string no vacio,
+  - nombre del campo donde se guardara la lista agregada.
+- `include_other_input_fields`:
+  - opcional,
+  - boolean,
+  - si `true`, toma como base el primer item para conservar contexto y agrega `output_var` encima.
 
 ---
 
-## 5) Cambios de archivos
+## 5) Cambios backend
 
-- Backend:
-  - `app/nodes/set_variables.py`
-- Frontend:
-  - `frontend/src/nodes/SetVariablesNode.jsx`
-- Documentación (si aplica al finalizar):
-  - `README.md`
-  - `_docs/CHECKLIST.md`
+## 5.1 Nuevo nodo
+
+Crear `app/nodes/aggregate.py` con `AggregateNode(BaseNode)`.
+
+### validate()
+
+- Validar `output_var` no vacio.
+- Validar tipo booleano de `include_other_input_fields`.
+
+### to_code()
+
+- Construir `_aggregated_list = list(_items)`.
+- Crear `_out = {output_var: _aggregated_list}`.
+- Si `include_other_input_fields = true` y hay items, fusionar con el primer item.
+- Reemplazar `_items` por lista de un solo item: `[_out]`.
+- Exponer `_node_debug` con conteo `items_in` y `items_out`.
+
+## 5.2 Registro
+
+Actualizar `app/codegen/generator.py`:
+
+- importar `AggregateNode`.
+- registrar en `NODE_REGISTRY`.
 
 ---
 
-## 6) Verificación
+## 6) Cambios frontend
 
-## Backend
+## 6.1 Componente del nodo
 
-```bash
-python -c "from app.main import app; print('OK')"
-python -m py_compile app/nodes/set_variables.py app/codegen/generator.py
-```
+Crear `frontend/src/nodes/AggregateNode.jsx`:
 
-Smoke test rápido:
+- 1 entrada (`input_1`).
+- 1 salida (`output_1`).
+- Descripcion: "Combine all items into one list".
 
-```bash
-python -c "from app.codegen.generator import validate_graph; nodes=[{'id':'n1','type':'set_variables','label':'Set','config':{'variables':[{'key':'age','type':'number','value':'32'},{'key':'active','type':'boolean','value':'true'}]}}]; print(validate_graph(nodes, []))"
-```
+## 6.2 PropsForm
+
+Campos:
+
+- `Output variable` (texto), default `items`.
+- `Include Other Input Fields` (checkbox).
+
+## 6.3 Registro en catalogo
+
+Actualizar `frontend/src/nodes/index.js`:
+
+- `nodeTypes.aggregate = AggregateNode`.
+- `NODE_META.aggregate` con `defaultConfig` y `PropsForm`.
+
+## 6.4 Selector de nodos
+
+- Incluir `aggregate` en categoria de datos (`Data`) en el sidebar.
+
+---
+
+## 7) Pruebas sugeridas
+
+## Backend (smoke)
+
+1. Con 3 items de entrada, salida tiene 1 item con lista de 3 elementos.
+2. `output_var` personalizado funciona (`records`, `all_rows`, etc.).
+3. `include_other_input_fields = true` conserva campos del primer item.
+4. Entrada vacia produce 1 item con lista vacia o comportamiento definido (decidir y documentar).
+
+## Integracion
+
+5. Flujo `split -> aggregate` recompone estructura esperada.
+6. `run`, `preview` y `build` sin regresiones.
 
 ## Frontend
 
-```bash
-cd frontend && npm run build
-```
-
-## Funcional end-to-end
-
-1. `Set Variables` con:
-   - `name:string='john'`
-   - `age:number='32'`
-   - `active:boolean='true'`
-   - `tags:array='["vip","beta"]'`
-2. Ejecutar `Run`.
-3. Confirmar en `items_out`:
-   - `name` string
-   - `age` number
-   - `active` boolean
-   - `tags` array/list
+7. Configuracion persiste tras guardar/cargar workflow.
+8. Conexion en canvas funciona con entrada/salida unica.
 
 ---
 
-## 7) Riesgos y decisiones
+## 8) Riesgos y decisiones
 
-- Riesgo: usuarios con datos legacy sin `type`.
-  - Mitigación: fallback a `string`.
-- Riesgo: confusión por entrada booleana libre.
-  - Mitigación: mensajes de error claros + guía en placeholder.
-- Decisión: en esta fase se agrega `array`, pero se mantiene fuera `object` y `null` como tipos explícitos.
+### Riesgos
+
+- Ambiguedad sobre comportamiento cuando `_items` esta vacio.
+- Conflicto de nombre si `output_var` ya existe en contexto base.
+
+### Mitigaciones
+
+- Definir explicitamente comportamiento para entrada vacia (recomendado: generar `[{output_var: []}]`).
+- En merge de contexto, priorizar `output_var` final sobre campos existentes.
+
+### Decisiones recomendadas
+
+1. Mantener salida siempre como un solo item.
+2. `output_var` default: `items`.
+3. Default UX `include_other_input_fields = false` para evitar resultados inesperados.
 
 ---
 
-## 8) Criterio de aceptación
+## 9) Resultado esperado
 
-- El nodo `Set Variables` permite elegir tipo por variable (`string/number/boolean/array`).
-- El backend valida tipos y valores correctamente.
-- El código generado preserva tipos reales en salida.
-- Flujos antiguos continúan funcionando sin migración manual.
+Contar con un nodo `aggregate` que permita consolidar todos los items del flujo en una sola lista dentro de un unico item de salida, simplificando escenarios de post-procesamiento, respuesta final y serializacion de resultados.

@@ -1,215 +1,179 @@
-# PLANNING3 — Set Variables: seleccionar campos dentro de objetos de entrada
+# PLANNING3 - Nodo Sort
 
-## Objetivo
+## 1) Objetivo
 
-Extender el nodo `set_variables` para que, cuando el input del flujo tenga objetos anidados (ej. `{"args": {"country": "EC"}}`), el usuario pueda mapear una variable desde una ruta interna del objeto (por ejemplo `args` o `args.country`).
+Implementar un nodo `sort` que permita ordenar los items del flujo por un campo, con orden ascendente o descendente.
 
-Este documento define la propuesta funcional/técnica. **No implementar en esta etapa.**
+El nodo debe:
 
----
-
-## Requerimiento
-
-Caso base solicitado:
-
-- Input item: `{"args": {"country": "EC"}}`
-- En `Set Variables`, al definir una variable, poder seleccionar un item interno del objeto (ej. `args`) para usarlo como valor.
-
-Extensión recomendada:
-
-- Soportar también rutas anidadas (`args.country`, `args.meta.code`, etc.).
+- recibir una lista de items (`_items`),
+- ordenar por un campo configurable,
+- soportar `asc` y `desc`,
+- devolver la lista ordenada por su unica salida.
 
 ---
 
-## Alcance funcional
+## 2) Alcance funcional
 
-## Incluido
+### Incluido
 
-1. En cada variable de `Set Variables`, habilitar un modo de valor basado en **ruta de objeto del input**.
-2. Resolver rutas sobre `_item` actual en runtime.
-3. Compatibilidad con tipos existentes del nodo (`string`, `number`, `boolean`, `array`, `object`).
-4. Mantener soporte de `${variable}` ya existente.
+- Nuevo nodo backend `sort`.
+- Configuracion de campo de orden y direccion (`asc`/`desc`).
+- Soporte de path simple/compuesto para campo (ej: `amount`, `user.name`, `items[0].price`).
+- Integracion con validate/preview/run/build.
+- Nodo frontend con props form simple.
 
-## No incluido (fase futura)
+### No incluido (por ahora)
 
-- Explorador visual profundo tipo tree-view de JSON completo.
-- Autocompletado inteligente por esquema global del workflow.
-- JSONPath completo con filtros (`$..`, `[?()]`, etc.).
+- Multi-sort (ordenar por multiples campos).
+- Opciones de locale/collation avanzada para texto.
+- Politicas complejas de nulls first/last configurables.
 
 ---
 
-## Diseño funcional propuesto
+## 3) Semantica de ejecucion
 
-Para cada variable en `Set Variables`, agregar `value_mode`:
+Entrada:
 
-- `literal` (default actual)
-- `template` (usa `${...}`)
-- `path` (nuevo: toma valor por ruta del `_item`)
+- `_items` (lista de objetos).
 
-Campos por variable propuestos:
+Ejecucion:
+
+1. Leer `field_path` configurado.
+2. Obtener valor de cada item segun path.
+3. Ordenar lista completa por ese valor.
+4. Aplicar direccion (`asc` o `desc`).
+
+Salida:
+
+- `_items` ordenada.
+- `_branch_outputs = {'output_1': _items}`.
+
+Comportamiento recomendado para valores faltantes:
+
+- Si un item no tiene el campo/path, fallar con error explicito (mas seguro para automatizaciones).
+
+---
+
+## 4) Contrato de configuracion propuesto
+
+Config base:
 
 ```json
 {
-  "key": "country",
-  "type": "string",
-  "value_mode": "path",
-  "value": "args.country"
+  "field_path": "id",
+  "order": "asc"
 }
 ```
 
-Notas:
+Reglas:
 
-- `value` se reutiliza para almacenar la ruta cuando `value_mode=path`.
-- Para compatibilidad, si `value_mode` no existe:
-  - si `value` contiene `${...}` -> tratar como `template`
-  - si no -> `literal`
+- `field_path`: requerido, string no vacio.
+- `order`: requerido, solo `asc` o `desc`.
 
----
+Compatibilidad sugerida:
 
-## Sintaxis de rutas
-
-Propuesta mínima segura:
-
-- Dot notation: `args.country`
-- Acceso de índice de arrays: `items[0].name`
-
-Ejemplos válidos:
-
-- `args`
-- `args.country`
-- `payload.items[0].id`
-
-Errores de ruta:
-
-- si no existe la ruta -> error por item con mensaje claro
-- si el tipo final no coincide con `type` -> error de conversión como hoy
+- aceptar alias `direction` si aparece en versiones futuras, pero persistir `order` como canonico.
 
 ---
 
-## Backend — cambios requeridos
+## 5) Cambios backend
 
-Archivo principal:
+## 5.1 Nuevo nodo
 
-- `app/nodes/set_variables.py`
+Crear `app/nodes/sort.py` con `SortNode(BaseNode)`.
 
-### Cambios
+### validate()
 
-1. Agregar parser/resolvedor de ruta:
-   - helper `_resolve_path(_item, path)`
-   - soportar claves y `[...]` numéricos
-2. Integrar `value_mode` en `to_code()`:
-   - `literal`: comportamiento actual
-   - `template`: comportamiento `${...}` actual
-   - `path`: usar `_resolve_path` para obtener valor fuente
-3. Mantener validación por `type` (number/boolean/array/object/string) sobre el valor resuelto.
-4. En `validate()`:
-   - validar que `value_mode` sea permitido
-   - validar forma de path (regex básica), sin requerir conocer datos reales en diseño
+- validar `field_path` no vacio.
+- validar `order` en (`asc`, `desc`).
 
-### Mensajes de error sugeridos
+### to_code()
 
-- `set_variables: key '<k>' path '<p>' not found`
-- `set_variables: key '<k>' invalid path syntax '<p>'`
+- usar helper runtime `_resolve_item_path(_item, _path)` ya presente en scripts generados.
+- construir clave segura para sort, evitando errores de comparacion entre tipos mixtos.
+- ejemplo de estrategia de key:
+  - prioridad por tipo (`None`, bool, number, string, list, dict, otros),
+  - valor normalizado para comparar.
+- aplicar `reverse=True` cuando `order == 'desc'`.
+- poblar `_node_debug` con `field_path`, `order`, `items_in`, `items_out`.
 
----
+## 5.2 Registro
 
-## Frontend — cambios requeridos
+Actualizar `app/codegen/generator.py`:
 
-Archivo principal:
-
-- `frontend/src/nodes/SetVariablesNode.jsx`
-
-### Cambios de UI por variable
-
-Agregar selector `Value Source`:
-
-- Literal
-- Template (${...})
-- Path (input object)
-
-Render condicional de `value`:
-
-- Literal: input normal
-- Template: input con ayuda `${variable}`
-- Path: input con placeholder `args.country` + ayuda
-
-### UX recomendada
-
-- Si hay `selectedNode` con `items_in` reciente (desde run traces), mostrar sugerencias de primer nivel (`args`, `payload`, etc.) para modo Path.
-- No bloquear guardado si no hay sugerencias (permitir escritura manual).
+- importar `SortNode`.
+- registrar en `NODE_REGISTRY`.
 
 ---
 
-## Modelo de datos actualizado
+## 6) Cambios frontend
 
-```json
-{
-  "variables": [
-    { "key": "raw_args", "type": "object", "value_mode": "path", "value": "args" },
-    { "key": "country", "type": "string", "value_mode": "path", "value": "args.country" },
-    { "key": "msg", "type": "string", "value_mode": "template", "value": "Country: ${country}" }
-  ],
-  "include_other_input_fields": true
-}
-```
+## 6.1 Nodo visual
 
-Compatibilidad legacy:
+Crear `frontend/src/nodes/SortNode.jsx`:
 
-- variables sin `value_mode` siguen funcionando sin migración.
+- 1 entrada, 1 salida.
+- resumen visual: `field_path` + `order`.
 
----
+## 6.2 PropsForm
 
-## Casos de prueba
+Campos:
 
-## Funcionales
+1. `Field path` (texto): `amount`, `user.name`, `rows[0].total`.
+2. `Order` (select): `Ascending (asc)` / `Descending (desc)`.
 
-1. Input `{"args":{"country":"EC"}}`, path `args` -> salida object.
-2. Input `{"args":{"country":"EC"}}`, path `args.country` -> salida string `EC`.
-3. Input con array, path `items[0].id` -> salida correcta.
+## 6.3 Registro en catalogo
 
-## Tipos
+Actualizar `frontend/src/nodes/index.js`:
 
-4. Path a número con type `number` -> ok.
-5. Path a string con type `number` -> error de conversión.
-6. Path a object con type `object` -> ok.
-7. Path a object con type `array` -> error.
+- `nodeTypes.sort = SortNode`.
+- `NODE_META.sort` con `defaultConfig` y `PropsForm`.
 
-## Errores
+## 6.4 Selector de nodos
 
-8. Path inexistente -> error claro.
-9. Sintaxis inválida (`args..country`, `items[x]`) -> error claro.
-
-## Compatibilidad
-
-10. Variables legacy (sin `value_mode`) siguen ejecutando igual.
+- Agregar `sort` a categoria `Data`.
 
 ---
 
-## Riesgos
+## 7) Pruebas sugeridas
 
-- Complejidad creciente en `set_variables.py` (ya tiene lógica de tipos + templates).
-- Ambigüedad entre `template` y `path` si no se define un `value_mode` claro.
-- UX: sin sugerencias automáticas, usuarios pueden cometer errores de ruta.
+## Backend
 
-Mitigación:
+1. Orden asc por numero.
+2. Orden desc por numero.
+3. Orden por string.
+4. Orden por path anidado (`user.name`).
+5. Item sin campo/path -> error esperado.
+6. Lista vacia -> salida vacia sin error.
 
-- helpers pequeños y testeables en backend
-- `value_mode` explícito en frontend
-- mensajes de error precisos
+## Integracion
+
+7. Flujo `set_variables -> sort -> ...` mantiene orden correcto.
+8. `preview`, `run` y `build` sin regresiones.
+
+## Frontend
+
+9. Config persiste tras guardar/cargar workflow.
+10. Node selector muestra `Sort` y permite agregarlo al canvas.
 
 ---
 
-## Preguntas abiertas
+## 8) Riesgos y mitigaciones
 
-1. ¿Ruta debe soportar únicamente dot notation + índice numérico, o algo más avanzado?
-2. ¿En error de path se descarta item o se aborta nodo completo?
-3. ¿Queremos autocompletado básico de rutas desde el último `items_in` ejecutado?
+### Riesgos
+
+- Datos con tipos mixtos que pueden romper comparacion nativa en Python.
+- Ambiguedad sobre como ordenar nulls y valores faltantes.
+
+### Mitigaciones
+
+- Definir key de sort tipada y deterministica.
+- Fallar temprano cuando falte `field_path` en algun item.
+- Documentar comportamiento en README/checklist cuando se implemente.
 
 ---
 
-## Criterio de aceptación
+## 9) Resultado esperado
 
-- El nodo `Set Variables` permite seleccionar valor desde ruta de objeto del input.
-- Caso solicitado (`args`) funciona correctamente.
-- También funciona en rutas anidadas simples (`args.country`).
-- Se mantiene compatibilidad con `literal` y `${variable}` existentes.
+Contar con un nodo `sort` estable y predecible para ordenar la lista del flujo en `asc` o `desc` por un campo configurable, facilitando procesos de priorizacion, ranking y preparacion de datos antes de pasos posteriores.

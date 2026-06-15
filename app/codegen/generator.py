@@ -26,6 +26,8 @@ from app.nodes.if_node import IfNode
 from app.nodes.filter import FilterNode
 from app.nodes.stop_and_error import StopAndErrorNode
 from app.nodes.split import SplitNode
+from app.nodes.aggregate import AggregateNode
+from app.nodes.format_date import FormatDateNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -41,6 +43,8 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     FilterNode.NODE_TYPE: FilterNode,
     StopAndErrorNode.NODE_TYPE: StopAndErrorNode,
     SplitNode.NODE_TYPE: SplitNode,
+    AggregateNode.NODE_TYPE: AggregateNode,
+    FormatDateNode.NODE_TYPE: FormatDateNode,
 }
 
 SCRIPT_HEADER = '''\
