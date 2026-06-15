@@ -8,6 +8,7 @@ import WaitNode,                 { WaitPropsForm }                 from './WaitN
 import HttpRequestNode,          { HttpRequestPropsForm }          from './HttpRequestNode';
 import IfNode,                   { IfPropsForm }                   from './IfNode';
 import StopAndErrorNode,         { StopAndErrorPropsForm }         from './StopAndErrorNode';
+import SplitNode,                { SplitPropsForm }                from './SplitNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -21,6 +22,7 @@ export const nodeTypes = {
   http_request:            HttpRequestNode,
   if:                      IfNode,
   stop_and_error:          StopAndErrorNode,
+  split:                   SplitNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -138,5 +140,17 @@ export const NODE_META = {
       message: 'Execution stopped by business rule',
     }),
     PropsForm: StopAndErrorPropsForm,
+  },
+  split: {
+    label: 'Split',
+    icon:  '✂️',
+    description: 'Split array into multiple items',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      input: '${items}',
+      include_other_input_fields: true,
+    }),
+    PropsForm: SplitPropsForm,
   },
 };

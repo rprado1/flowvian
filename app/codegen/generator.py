@@ -24,6 +24,7 @@ from app.nodes.wait import WaitNode
 from app.nodes.http_request import HttpRequestNode
 from app.nodes.if_node import IfNode
 from app.nodes.stop_and_error import StopAndErrorNode
+from app.nodes.split import SplitNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -37,6 +38,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     HttpRequestNode.NODE_TYPE: HttpRequestNode,
     IfNode.NODE_TYPE: IfNode,
     StopAndErrorNode.NODE_TYPE: StopAndErrorNode,
+    SplitNode.NODE_TYPE: SplitNode,
 }
 
 SCRIPT_HEADER = '''\
