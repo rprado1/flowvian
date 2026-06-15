@@ -7,6 +7,7 @@ import MergeNode,                { MergePropsForm }                from './Merge
 import WaitNode,                 { WaitPropsForm }                 from './WaitNode';
 import HttpRequestNode,          { HttpRequestPropsForm }          from './HttpRequestNode';
 import IfNode,                   { IfPropsForm }                   from './IfNode';
+import FilterNode,               { FilterPropsForm }               from './FilterNode';
 import StopAndErrorNode,         { StopAndErrorPropsForm }         from './StopAndErrorNode';
 import SplitNode,                { SplitPropsForm }                from './SplitNode';
 
@@ -21,6 +22,7 @@ export const nodeTypes = {
   wait:                    WaitNode,
   http_request:            HttpRequestNode,
   if:                      IfNode,
+  filter:                  FilterNode,
   stop_and_error:          StopAndErrorNode,
   split:                   SplitNode,
 };
@@ -129,6 +131,29 @@ export const NODE_META = {
       ],
     }),
     PropsForm: IfPropsForm,
+  },
+  filter: {
+    label: 'Filter',
+    icon:  '🧹',
+    description: 'Keep only items matching conditions',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      input: '${value}',
+      data_type: 'string',
+      operator: 'equals',
+      compare_value: '',
+      conditions: [
+        {
+          join: 'and',
+          input: '${value}',
+          data_type: 'string',
+          operator: 'equals',
+          compare_value: '',
+        },
+      ],
+    }),
+    PropsForm: FilterPropsForm,
   },
   stop_and_error: {
     label: 'Stop and Error',

@@ -39,3 +39,4 @@
 - 7.- Requiero implementar el nodo Stop and Error
 - 8.- Requiero implementar el nodo Split, que permite ingresar una variable en el formato ${VARIABLE} que debe ser del tipo array, y los separa en varios items dentro del flujo, debe tener la opcion Include Other Input Fields para cada nuevo item
 - 9.- Revisar y proponer opciones para mejorar el UX del menu de seleccion de nodos, ya que actualmente hay muchos nodos y la seccion donde se eligen se esta quedando pequena.
+- 10.- Requiero crear el node Filter node, similar a If node, solo que este nuevo nodo no tienen dos salidas, solo una, los items filtrados
