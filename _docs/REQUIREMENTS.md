@@ -38,3 +38,4 @@
 - 6.- Requiero implemental el nodo if, debe tener un input en donde ingresara una varible del flujo en formato ${VARIABLE} un selector de la condicion a evaluar y otro input para ingresar un valor o variable a compara, considerar que los tipos de datos a comparar: string, number, boolean, object y array, por lo ntanto existen diferentes comparaciones dependiendo del tipo por ejmplo
 - 7.- Requiero implementar el nodo Stop and Error
 - 8.- Requiero implementar el nodo Split, que permite ingresar una variable en el formato ${VARIABLE} que debe ser del tipo array, y los separa en varios items dentro del flujo, debe tener la opcion Include Other Input Fields para cada nuevo item
+- 9.- Revisar y proponer opciones para mejorar el UX del menu de seleccion de nodos, ya que actualmente hay muchos nodos y la seccion donde se eligen se esta quedando pequena.

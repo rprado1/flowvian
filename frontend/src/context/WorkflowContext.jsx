@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useRef, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { useNodesState, useEdgesState } from 'reactflow';
 import { NODE_META } from '@/nodes';
 import { api } from '@/api';
@@ -7,6 +7,16 @@ import { toast } from 'sonner';
 const WorkflowContext = createContext(null);
 
 export function WorkflowProvider({ children }) {
+  const [recentNodeTypes, setRecentNodeTypes] = useState(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const raw = window.localStorage.getItem('workflowexe.recentNodeTypes');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter(v => typeof v === 'string') : [];
+    } catch {
+      return [];
+    }
+  });
   const [workflows, setWorkflows]             = useState([]);
   const [currentWfId, setCurrentWfId]         = useState(null);
   const [currentWfName, setCurrentWfName]     = useState('');
@@ -14,6 +24,15 @@ export function WorkflowProvider({ children }) {
   const [nodes, setNodes, onNodesChange]       = useNodesState([]);
   const [edges, setEdges, onEdgesChange]       = useEdgesState([]);
   const saveTimer                              = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem('workflowexe.recentNodeTypes', JSON.stringify(recentNodeTypes));
+    } catch {
+      // noop
+    }
+  }, [recentNodeTypes]);
 
   // ── Instance name generation ──────────────────────────────────────────
   const generateInstanceName = useCallback((type, currentNodes) => {
@@ -96,6 +115,53 @@ export function WorkflowProvider({ children }) {
     setSelectedNodeId(null);
   }, [setNodes, setEdges]);
 
+  const pushRecentNodeType = useCallback((type) => {
+    setRecentNodeTypes(prev => {
+      return [type, ...prev.filter(v => v !== type)].slice(0, 8);
+    });
+  }, []);
+
+  const clearRecentNodeTypes = useCallback(() => {
+    setRecentNodeTypes([]);
+    try {
+      window.localStorage.removeItem('workflowexe.recentNodeTypes');
+    } catch {
+      // noop
+    }
+  }, []);
+
+  const addNode = useCallback((type, position) => {
+    if (!currentWfId) return false;
+    if (!NODE_META[type]) return false;
+
+    const fallbackPosition = {
+      x: 120 + ((nodes.length % 5) * 60),
+      y: 120 + ((nodes.length % 6) * 50),
+    };
+
+    const nextId = `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+    setNodes(prev => {
+      const instanceName = generateInstanceName(type, prev);
+      const newNode = {
+        id: nextId,
+        type,
+        position: position || fallbackPosition,
+        data: {
+          instanceName,
+          config: NODE_META[type].defaultConfig(),
+        },
+      };
+      const next = [...prev, newNode];
+      scheduleSave(next, edges);
+      return next;
+    });
+
+    setSelectedNodeId(nextId);
+    pushRecentNodeType(type);
+    return true;
+  }, [currentWfId, nodes.length, setNodes, generateInstanceName, scheduleSave, edges, setSelectedNodeId, pushRecentNodeType]);
+
   // ── Workflow CRUD ─────────────────────────────────────────────────────
   const loadWorkflows = useCallback(async () => {
     const data = await api('GET', '/api/workflows/');
@@ -147,6 +213,9 @@ export function WorkflowProvider({ children }) {
       nodes, setNodes, onNodesChange,
       edges, setEdges, onEdgesChange,
       generateInstanceName,
+      addNode,
+      recentNodeTypes,
+      clearRecentNodeTypes,
       saveGraph, scheduleSave, loadGraph,
       loadWorkflows, openWorkflow,
       createWorkflow, renameWorkflow, deleteWorkflow,
