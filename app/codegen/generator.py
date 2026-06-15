@@ -438,6 +438,7 @@ def _emit_waves(
 
             lines.extend(_emit_node_input_setup(node_data, base_indent))
             lines.append(f"{pad}_branch_outputs = None")
+            lines.append(f"{pad}_node_debug = None")
 
             if instrument:
                 lines.append(f"{pad}_items_before = list(_items)")
@@ -455,7 +456,7 @@ def _emit_waves(
                 lines.append(f"{pad}            raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
                 lines.append(f"{pad}    if 'output_1' not in _node_outputs_norm:")
                 lines.append(f"{pad}        _node_outputs_norm['output_1'] = list(_items_after)")
-                lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after}})")
+                lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after, 'debug': _node_debug}})")
                 lines.append(f"{pad}    _node_items[{node_id!r}] = _items_after")
                 lines.append(f"{pad}    _node_outputs[{node_id!r}] = _node_outputs_norm")
                 lines.append(f"{pad}except _StopIterationExecution as _stop_ex:")
@@ -499,6 +500,7 @@ def _emit_waves(
                 lines.extend(_emit_node_input_setup(node_data, base_indent + 4))
                 inner_pad = " " * (base_indent + 4)
                 lines.append(f"{inner_pad}_branch_outputs = None")
+                lines.append(f"{inner_pad}_node_debug = None")
 
                 if instrument:
                     lines.append(f"{inner_pad}_items_before = list(_items)")
@@ -516,8 +518,8 @@ def _emit_waves(
                     lines.append(f"{inner_pad}            raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
                     lines.append(f"{inner_pad}    if 'output_1' not in _node_outputs_norm:")
                     lines.append(f"{inner_pad}        _node_outputs_norm['output_1'] = list(_items_after)")
-                    lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after}})")
-                    lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm}}")
+                    lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after, 'debug': _node_debug}})")
+                    lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm, 'debug': _node_debug}}")
                     lines.append(f"{inner_pad}except _StopIterationExecution as _stop_ex:")
                     lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'stopped_current_execution', 'ts': time.time(), 'items_in': _items_before, 'error': _stop_ex.message}})")
                     lines.append(f"{inner_pad}    raise")
@@ -538,7 +540,7 @@ def _emit_waves(
                     lines.append(f"{inner_pad}        raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
                     lines.append(f"{inner_pad}if 'output_1' not in _node_outputs_norm:")
                     lines.append(f"{inner_pad}    _node_outputs_norm['output_1'] = list(_items_after)")
-                    lines.append(f"{inner_pad}_wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm}}")
+                    lines.append(f"{inner_pad}_wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm, 'debug': _node_debug}}")
                 lines.append("")
 
             submits = ", ".join(
