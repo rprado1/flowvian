@@ -1,191 +1,215 @@
-# PLANNING — Requerimiento #6 Fase 2: Cerrar panel al eliminar nodo con tecla Delete
+# PLANNING3 — Set Variables: seleccionar campos dentro de objetos de entrada
 
 ## Objetivo
 
-Cuando un nodo está seleccionado (panel de propiedades abierto) y el usuario pulsa la tecla **Delete**, el nodo se elimina pero el panel de configuración queda abierto y bloqueado. El comportamiento esperado es que el nodo se elimine y el panel se cierre automáticamente.
+Extender el nodo `set_variables` para que, cuando el input del flujo tenga objetos anidados (ej. `{"args": {"country": "EC"}}`), el usuario pueda mapear una variable desde una ruta interna del objeto (por ejemplo `args` o `args.country`).
+
+Este documento define la propuesta funcional/técnica. **No implementar en esta etapa.**
 
 ---
 
-## Diagnóstico del bug (revisado tras investigación profunda)
+## Requerimiento
 
-### Causa raíz real: el evento `keydown` nunca llega a Drawflow
+Caso base solicitado:
 
-El diagnóstico anterior era incorrecto. La investigación del código fuente de Drawflow reveló que el problema **no** es que `nodeRemoved` se dispare sin limpiar estado — es que el `keydown` de la tecla Delete **nunca llega** al handler de Drawflow en absoluto.
+- Input item: `{"args": {"country": "EC"}}`
+- En `Set Variables`, al definir una variable, poder seleccionar un item interno del objeto (ej. `args`) para usarlo como valor.
 
-#### Por qué no llega
+Extensión recomendada:
 
-Drawflow registra su handler de teclado así en `start()`:
-
-```js
-this.container.tabIndex = 0;   // hace #drawflow focusable
-this.container.addEventListener("keydown", this.key.bind(this));
-```
-
-El listener vive **exclusivamente en `#drawflow`**. Para que dispare, `#drawflow` debe estar **enfocado** (`document.activeElement === #drawflow`) en el momento en que el usuario presiona Delete.
-
-El flujo que rompe el foco:
-
-```
-1. Usuario hace clic en el nodo → #drawflow recibe el clic → #drawflow tiene el foco ✅
-2. selectNode() dispara → openPropsPanel() inyecta <input>/<select> en #props-body
-3. El panel se muestra con campos de formulario visibles
-4. El usuario (inevitablemente) hace clic en algún campo del panel para configurar el nodo
-   → el <input> recibe el foco → #drawflow pierde el foco ❌
-5. Usuario presiona Delete
-   → keydown se dispara sobre el <input> enfocado (dentro de #props-panel)
-   → el evento NUNCA llega a #drawflow
-   → Drawflow no ve la tecla → no elimina el nodo → panel permanece abierto
-```
-
-Incluso si el usuario no hace clic en un input, existe un segundo guard dentro del propio handler de Drawflow que bloquea la eliminación:
-
-```js
-// drawflow.min.js — key()
-("Delete" === e.key) && (
-    null != this.node_selected &&
-    "INPUT"    !== this.first_click.tagName &&  // ← si el último clic fue en un <input>
-    "TEXTAREA" !== this.first_click.tagName &&  //   del nodo, esto bloquea
-    this.removeNodeId(this.node_selected.id)
-)
-```
-
-`this.first_click` se establece en el `mousedown` del **último clic dentro de `#drawflow`**. Si el usuario hizo clic en un campo de texto dentro de la tarjeta del nodo, `first_click.tagName === "INPUT"` y la eliminación queda bloqueada aunque el foco siga en `#drawflow`.
-
-### Resumen de causas
-
-| # | Causa | Efecto |
-|---|---|---|
-| 1 | Al abrir el panel de props, el usuario interactúa con `<input>` → foco sale de `#drawflow` | Delete no llega al handler de Drawflow → **nodo no se elimina** |
-| 2 | Guard `first_click.tagName !== "INPUT"` en Drawflow | Bloquea eliminación si el último clic dentro del canvas fue en un input del nodo |
-
-### Estado de la implementación anterior (`editor.node_selected = null`)
-
-El cambio implementado en la iteración anterior (limpiar `editor.node_selected` en `nodeRemoved`) es **correcto y necesario** para el caso del botón `×`, pero no resuelve este bug porque el `keydown` nunca llega a Drawflow en primer lugar. Ese cambio puede quedar como está (es beneficioso para la limpieza de estado).
+- Soportar también rutas anidadas (`args.country`, `args.meta.code`, etc.).
 
 ---
 
-## Diseño de la solución
+## Alcance funcional
 
-### Principio
+## Incluido
 
-En lugar de depender del handler nativo de teclado de Drawflow (que requiere foco en `#drawflow`), la aplicación implementa su **propio handler `keydown` a nivel de `document`** que detecta Delete cuando hay un nodo seleccionado y ejecuta la eliminación directamente llamando a la API de Drawflow.
+1. En cada variable de `Set Variables`, habilitar un modo de valor basado en **ruta de objeto del input**.
+2. Resolver rutas sobre `_item` actual en runtime.
+3. Compatibilidad con tipos existentes del nodo (`string`, `number`, `boolean`, `array`, `object`).
+4. Mantener soporte de `${variable}` ya existente.
 
-Esto es más robusto que intentar gestionar el foco porque:
-- No requiere que el usuario nunca interactúe con los inputs del panel.
-- Funciona independientemente de `first_click.tagName`.
-- Es el patrón estándar para atajos de teclado globales en SPAs.
+## No incluido (fase futura)
 
-### Solución
+- Explorador visual profundo tipo tree-view de JSON completo.
+- Autocompletado inteligente por esquema global del workflow.
+- JSONPath completo con filtros (`$..`, `[?()]`, etc.).
 
-#### Paso 1 — Handler `keydown` global en `document`
+---
 
-Agregar un listener en `document` que capture Delete cuando:
-1. Hay un nodo seleccionado (`selectedNodeId !== null`).
-2. El foco activo **no** está en un `<input>`, `<textarea>`, o elemento `contenteditable` (para no interceptar Delete mientras el usuario edita texto en un modal u otro campo).
-3. No hay ningún modal abierto.
+## Diseño funcional propuesto
 
-```js
-document.addEventListener('keydown', e => {
-    if (e.key !== 'Delete') return;
-    // No actuar si el foco está en un campo de texto editable
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' ||
-        document.activeElement?.isContentEditable) return;
-    // No actuar si hay un modal abierto
-    if (document.querySelector('.modal-backdrop:not(.hidden)')) return;
-    // Si hay un nodo seleccionado, eliminarlo
-    if (selectedNodeId !== null) {
-        e.preventDefault();
-        editor.removeNodeId('node-' + selectedNodeId);
-    }
-});
-```
+Para cada variable en `Set Variables`, agregar `value_mode`:
 
-**Nota sobre `editor.removeNodeId`:** Drawflow expone este método públicamente. Recibe el id con prefijo `"node-"` (ej. `"node-3"`). Al llamarlo, Drawflow dispara `nodeRemoved` normalmente, por lo que toda la lógica de limpieza ya existente (`delete nodeConfigs[id]`, `editor.node_selected = null`, `deselectNode()`, `scheduleSave()`) se ejecuta sin duplicar código.
+- `literal` (default actual)
+- `template` (usa `${...}`)
+- `path` (nuevo: toma valor por ruta del `_item`)
 
-#### Paso 2 — Restituir foco a `#drawflow` al abrir el panel (mejora de UX, opcional pero recomendada)
+Campos por variable propuestos:
 
-Al abrir el panel de propiedades, devolver el foco a `#drawflow` para que el handler nativo de Drawflow también funcione como respaldo cuando el usuario nunca toca los inputs del panel:
-
-```js
-function openPropsPanel(title, html) {
-    document.getElementById('props-title').textContent = title;
-    document.getElementById('props-body').innerHTML = html;
-    document.getElementById('props-panel').classList.remove('hidden');
-    // Devolver foco al canvas para que Delete nativo de Drawflow también funcione
-    document.getElementById('drawflow')?.focus({ preventScroll: true });
+```json
+{
+  "key": "country",
+  "type": "string",
+  "value_mode": "path",
+  "value": "args.country"
 }
 ```
 
-Esto no impide que el usuario haga clic en los inputs del panel — simplemente garantiza que en el momento de abrir el panel, el foco está en el lugar correcto. El handler global del Paso 1 es el seguro principal.
+Notas:
+
+- `value` se reutiliza para almacenar la ruta cuando `value_mode=path`.
+- Para compatibilidad, si `value_mode` no existe:
+  - si `value` contiene `${...}` -> tratar como `template`
+  - si no -> `literal`
 
 ---
 
-## Archivos a modificar
+## Sintaxis de rutas
 
-| Archivo | Tipo de cambio | Descripción |
-|---|---|---|
-| `app/static/js/app.js` | Modificación | Agregar handler `keydown` global en `document` dentro de `initEditor()` |
-| `app/static/js/app.js` | Modificación | Agregar `.focus()` al final de `openPropsPanel()` |
+Propuesta mínima segura:
 
-**Total: 1 archivo, 2 bloques de código modificados.**
+- Dot notation: `args.country`
+- Acceso de índice de arrays: `items[0].name`
+
+Ejemplos válidos:
+
+- `args`
+- `args.country`
+- `payload.items[0].id`
+
+Errores de ruta:
+
+- si no existe la ruta -> error por item con mensaje claro
+- si el tipo final no coincide con `type` -> error de conversión como hoy
 
 ---
 
-## Cambios detallados
+## Backend — cambios requeridos
 
-### 1. En `initEditor()` — nuevo listener global de teclado
+Archivo principal:
 
-Agregar al final del cuerpo de `initEditor()`, después de los listeners de Drawflow:
+- `app/nodes/set_variables.py`
 
-```js
-// Global keyboard shortcut: Delete removes the selected node from anywhere
-document.addEventListener('keydown', e => {
-    if (e.key !== 'Delete') return;
-    const tag = document.activeElement?.tagName;
-    if (tag === 'INPUT' || tag === 'TEXTAREA' ||
-        document.activeElement?.isContentEditable) return;
-    if (document.querySelector('.modal-backdrop:not(.hidden)')) return;
-    if (selectedNodeId !== null) {
-        e.preventDefault();
-        editor.removeNodeId('node-' + selectedNodeId);
-    }
-});
-```
+### Cambios
 
-### 2. En `openPropsPanel()` — devolver foco al canvas
+1. Agregar parser/resolvedor de ruta:
+   - helper `_resolve_path(_item, path)`
+   - soportar claves y `[...]` numéricos
+2. Integrar `value_mode` en `to_code()`:
+   - `literal`: comportamiento actual
+   - `template`: comportamiento `${...}` actual
+   - `path`: usar `_resolve_path` para obtener valor fuente
+3. Mantener validación por `type` (number/boolean/array/object/string) sobre el valor resuelto.
+4. En `validate()`:
+   - validar que `value_mode` sea permitido
+   - validar forma de path (regex básica), sin requerir conocer datos reales en diseño
 
-```js
-function openPropsPanel(title, html) {
-    document.getElementById('props-title').textContent = title;
-    document.getElementById('props-body').innerHTML = html;
-    document.getElementById('props-panel').classList.remove('hidden');
-    document.getElementById('drawflow')?.focus({ preventScroll: true });
+### Mensajes de error sugeridos
+
+- `set_variables: key '<k>' path '<p>' not found`
+- `set_variables: key '<k>' invalid path syntax '<p>'`
+
+---
+
+## Frontend — cambios requeridos
+
+Archivo principal:
+
+- `frontend/src/nodes/SetVariablesNode.jsx`
+
+### Cambios de UI por variable
+
+Agregar selector `Value Source`:
+
+- Literal
+- Template (${...})
+- Path (input object)
+
+Render condicional de `value`:
+
+- Literal: input normal
+- Template: input con ayuda `${variable}`
+- Path: input con placeholder `args.country` + ayuda
+
+### UX recomendada
+
+- Si hay `selectedNode` con `items_in` reciente (desde run traces), mostrar sugerencias de primer nivel (`args`, `payload`, etc.) para modo Path.
+- No bloquear guardado si no hay sugerencias (permitir escritura manual).
+
+---
+
+## Modelo de datos actualizado
+
+```json
+{
+  "variables": [
+    { "key": "raw_args", "type": "object", "value_mode": "path", "value": "args" },
+    { "key": "country", "type": "string", "value_mode": "path", "value": "args.country" },
+    { "key": "msg", "type": "string", "value_mode": "template", "value": "Country: ${country}" }
+  ],
+  "include_other_input_fields": true
 }
 ```
 
----
+Compatibilidad legacy:
 
-## Casos borde a considerar
-
-| Caso | Comportamiento esperado |
-|---|---|
-| Delete con nodo seleccionado y foco en el panel de props | Handler global intercepta → nodo eliminado, panel cerrado ✅ |
-| Delete con nodo seleccionado y foco en `#drawflow` | Handler nativo de Drawflow Y handler global ambos podrían disparar. El handler global llama `removeNodeId` → `nodeRemoved` dispara. El handler de Drawflow también puede llamar `removeNodeId` sobre el mismo nodo — pero Drawflow hace `delete data[id]` que sobre un id ya borrado es inofensivo. Se añade guard `if (selectedNodeId !== null)` antes de llamar para evitar doble ejecución |
-| Delete mientras se escribe en un `<input>` del panel (nombre, intervalo, etc.) | Guard `tag === 'INPUT'` bloquea el handler global → el usuario puede borrar texto normalmente ✅ |
-| Delete con un modal abierto (nuevo workflow, renombrar, confirmar borrar) | Guard de modal bloquea el handler global → Delete no elimina nodo ✅ |
-| Delete sin ningún nodo seleccionado | `selectedNodeId === null` → handler global no actúa ✅ |
-| Eliminación vía botón `×` de Drawflow | No pasa por el handler global; `nodeRemoved` ya limpia el estado ✅ |
-| El handler global y el nativo de Drawflow disparan al mismo tiempo | `removeNodeId` sobre id ya eliminado: Drawflow busca el elemento DOM que ya no existe → el `querySelector` retorna `null` → Drawflow lo ignora silenciosamente. No hay error visible |
+- variables sin `value_mode` siguen funcionando sin migración.
 
 ---
 
-## Verificación
+## Casos de prueba
 
-1. Crear un nodo. Hacer clic en él → panel se abre.
-2. **Sin tocar ningún input del panel**, presionar Delete → nodo eliminado, panel cerrado.
-3. Crear un nodo. Hacer clic en él → panel se abre. **Hacer clic en un input del panel** (ej. cambiar el intervalo del scheduler). Presionar Delete → nodo eliminado, panel cerrado.
-4. Crear un nodo. Hacer clic en él. Abrir modal de nuevo workflow. Presionar Delete → nodo **no** se elimina (modal activo).
-5. Crear un nodo. Hacer clic en él. Hacer clic en el `×` del panel (sin Delete) → panel se cierra, nodo permanece.
-6. Crear un nodo. Eliminarlo con el botón `×` del nodo en Drawflow → sin regresión.
-7. Presionar Delete sin nodo seleccionado → sin efecto.
+## Funcionales
+
+1. Input `{"args":{"country":"EC"}}`, path `args` -> salida object.
+2. Input `{"args":{"country":"EC"}}`, path `args.country` -> salida string `EC`.
+3. Input con array, path `items[0].id` -> salida correcta.
+
+## Tipos
+
+4. Path a número con type `number` -> ok.
+5. Path a string con type `number` -> error de conversión.
+6. Path a object con type `object` -> ok.
+7. Path a object con type `array` -> error.
+
+## Errores
+
+8. Path inexistente -> error claro.
+9. Sintaxis inválida (`args..country`, `items[x]`) -> error claro.
+
+## Compatibilidad
+
+10. Variables legacy (sin `value_mode`) siguen ejecutando igual.
+
+---
+
+## Riesgos
+
+- Complejidad creciente en `set_variables.py` (ya tiene lógica de tipos + templates).
+- Ambigüedad entre `template` y `path` si no se define un `value_mode` claro.
+- UX: sin sugerencias automáticas, usuarios pueden cometer errores de ruta.
+
+Mitigación:
+
+- helpers pequeños y testeables en backend
+- `value_mode` explícito en frontend
+- mensajes de error precisos
+
+---
+
+## Preguntas abiertas
+
+1. ¿Ruta debe soportar únicamente dot notation + índice numérico, o algo más avanzado?
+2. ¿En error de path se descarta item o se aborta nodo completo?
+3. ¿Queremos autocompletado básico de rutas desde el último `items_in` ejecutado?
+
+---
+
+## Criterio de aceptación
+
+- El nodo `Set Variables` permite seleccionar valor desde ruta de objeto del input.
+- Caso solicitado (`args`) funciona correctamente.
+- También funciona en rutas anidadas simples (`args.country`).
+- Se mantiene compatibilidad con `literal` y `${variable}` existentes.

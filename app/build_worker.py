@@ -4,9 +4,10 @@ of the Flask server and its reloader.
 
 Usage:
     python -m app.build_worker <job_file> <script_path> <safe_name>
-                               <dist_dir> <work_dir> <spec_dir>
+                               <dist_dir> <work_dir> <spec_dir> <workflow_id>
 
 Writes the final job state to <job_file> when done.
+The workflow_id is passed but not currently used (reserved for future features).
 """
 from __future__ import annotations
 
@@ -25,7 +26,7 @@ def _write(job_file: str, payload: dict) -> None:
 
 
 def main() -> None:
-    _, job_file, script_path, safe_name, dist_dir, work_dir, spec_dir = sys.argv
+    _, job_file, script_path, safe_name, dist_dir, work_dir, spec_dir, workflow_id = sys.argv
 
     cmd = [
         sys.executable, "-m", "PyInstaller",

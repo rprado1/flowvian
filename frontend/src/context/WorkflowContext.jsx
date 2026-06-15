@@ -31,6 +31,7 @@ export function WorkflowProvider({ children }) {
   const saveGraph = useCallback(async (currentNodes, currentEdges, wfId) => {
     const id = wfId || currentWfId;
     if (!id) return;
+    const nodeLookup = new Map((currentNodes || nodes).map(n => [String(n.id), n]));
     const apiNodes = (currentNodes || nodes).map(n => ({
       id:     n.id,
       type:   n.type,
@@ -39,13 +40,23 @@ export function WorkflowProvider({ children }) {
       pos_y:  n.position.y,
       config: n.data.config || {},
     }));
-    const apiEdges = (currentEdges || edges).map(e => ({
-      id:             e.id,
-      source_node_id: e.source,
-      target_node_id: e.target,
-      source_output:  e.sourceHandle || 'output_1',
-      target_input:   e.targetHandle || 'input_1',
-    }));
+    const apiEdges = (currentEdges || edges)
+      .filter(e => {
+        if (!e.sourceHandle || !e.targetHandle) return false;
+        const targetNode = nodeLookup.get(String(e.target));
+        if (!targetNode) return false;
+        if (targetNode.type === 'merge') {
+          return /^in-\d+$/.test(e.targetHandle);
+        }
+        return true;
+      })
+      .map(e => ({
+        id:             e.id,
+        source_node_id: e.source,
+        target_node_id: e.target,
+        source_output:  e.sourceHandle,
+        target_input:   e.targetHandle,
+      }));
     try {
       await api('POST', `/api/workflows/${id}/graph`, { nodes: apiNodes, edges: apiEdges });
     } catch (e) {
@@ -60,6 +71,7 @@ export function WorkflowProvider({ children }) {
 
   const loadGraph = useCallback(async (wfId) => {
     const data = await api('GET', `/api/workflows/${wfId}/graph`);
+    const dbNodeTypeById = new Map((data.nodes || []).map(n => [String(n.id), n.type]));
     const rfNodes = (data.nodes || []).map(n => {
       const meta = NODE_META[n.type];
       return {
@@ -77,7 +89,7 @@ export function WorkflowProvider({ children }) {
       source:       String(e.source_node_id),
       target:       String(e.target_node_id),
       sourceHandle: e.source_output  || 'output_1',
-      targetHandle: e.target_input   || 'input_1',
+      targetHandle: e.target_input || (dbNodeTypeById.get(String(e.target_node_id)) === 'merge' ? undefined : 'input_1'),
     }));
     setNodes(rfNodes);
     setEdges(rfEdges);

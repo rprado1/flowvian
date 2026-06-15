@@ -1,6 +1,7 @@
 import BaseNode from './BaseNode';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 
 // ── Canvas card ────────────────────────────────────────────────────────
 export default function AddTimeToDateNode({ data }) {
@@ -45,6 +46,22 @@ export function TimeDeltaFields({ config, onChange, verb = 'add' }) {
           placeholder="new_date"
           onChange={e => onChange({ ...config, output_var: e.target.value.trim() || 'new_date' })}
         />
+      </div>
+      
+      <div className="flex items-center gap-2 pt-2">
+        <Checkbox
+          id={`include-input-fields-${verb}`}
+          checked={config.include_other_input_fields || false}
+          onCheckedChange={(checked) =>
+            onChange({ ...config, include_other_input_fields: checked })
+          }
+        />
+        <Label
+          htmlFor={`include-input-fields-${verb}`}
+          className="text-sm text-muted-foreground cursor-pointer"
+        >
+          Include Other Input Fields
+        </Label>
       </div>
     </div>
   );

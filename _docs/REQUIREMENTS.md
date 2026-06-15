@@ -21,3 +21,19 @@
 - Requiero tern en el potal un boton run para ejcutar un workflow, al ejecutar se van ejectuando los ndos, en la parte inferior en una tabla/arbol se muestra los datos de entrada y salida de cada nod ejecutado
 - 5. Requiero que los nodos tengan un nombre unico, cuando se crean tienen el mismo nombre, si se crean nuevos nodos si ya existen nombres similares agregar un sufijo numerico
 - 6.- Cuando selecciono un nodo, se abre el sidebar de configuracion, si doy clic en la tecla suprimiar el nodo se elimina, pero el sidebar conrinua abierto y se bloquea no le puedo cerrar, deberia cerrarse cuando se elimina el nodo
+- 7.- Requiero que el flujo de datos en cada nodo sea un array, el primer nodo debe como tener entrada [{"workflowId","executionId","executionDate"}]
+- 8.- El execution id es un id random unico de ejecucion
+- 9.- Cada nodo se debe ejecutar para los n items en el flujo actual
+- 10.- Cada nodo con salida de datos debe tener la opción "Include Other Input Fields"
+- 11.- Se requiere un nodo `merge` que implemente la estrategia `append`.
+- 12.- Requier que el nodo merbe pueda concatenar n ramas, para esta en la configuracion debe tener el input con el numero de ramas a combinar
+
+#Fase 3
+
+- 1.- Requiero un node Wait, por segundos unicamente
+- 2.- Requiero un node que me permita hacer peticiones HTTP con los metodos POST y GET, debe permitir enviar custom headers y Body raw json para POST, debe permitir usar valores dentro del flujo pra configurarlo en la URL, Headers o BOdy raw json, para llamarlso se usa ${NOMBRE_VARIABLE}
+- 3.- Requiero que el node set variables me permita definir el tipo de variable: String, Number, Boolean
+- 4. Requiero que el node set variables, tambien permita definir valores para cada key del input en base a ${variable name} similar al node http get, ademas en el node set variables, los inputs deben estar uno por cada lienea, actualmente esta [Input key] [Select type] [Input value], debe ser [Input key] <br> [Select type] <br> [Input value]
+- 5.- Ahora, si en el node set variables el input es un object, por ejemplo {'args': {'country': 'EC'}}, quiero que al definir una varaible, me permitea seleccionra un item dentro dese objecto por ejemplo args
+- 6.- Requiero implemental el nodo if, debe tener un input en donde ingresara una varible del flujo en formato ${VARIABLE} un selector de la condicion a evaluar y otro input para ingresar un valor o variable a compara, considerar que los tipos de datos a comparar: string, number, boolean, object y array, por lo ntanto existen diferentes comparaciones dependiendo del tipo por ejmplo
+- 7.- Requiero implementar el nodo Stop and Error

@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import traceback
 import uuid
 
 from flask import Blueprint, jsonify, current_app, send_file
@@ -11,6 +12,10 @@ from app.db.manager import get_workflow_meta, get_workflow_graph
 from app.codegen.generator import generate_script, validate_graph, generate_run_script
 
 builder_bp = Blueprint("builder", __name__)
+
+# Maximum wall-clock time for /run workflow execution.
+# Increased to support Wait nodes with delays > 30 seconds.
+RUN_TIMEOUT_SECONDS = 300
 
 
 def data_dir():
@@ -77,7 +82,7 @@ def preview(workflow_id):
 
     graph = get_workflow_graph(data_dir(), workflow_id)
     try:
-        script = generate_script(meta["name"], graph["nodes"], graph["edges"])
+        script = generate_script(meta["name"], workflow_id, graph["nodes"], graph["edges"])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 
@@ -97,7 +102,7 @@ def build(workflow_id):
     graph = get_workflow_graph(data_dir(), workflow_id)
 
     try:
-        script = generate_script(meta["name"], graph["nodes"], graph["edges"])
+        script = generate_script(meta["name"], workflow_id, graph["nodes"], graph["edges"])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 
@@ -123,7 +128,7 @@ def build(workflow_id):
         [
             sys.executable,
             os.path.join(os.path.dirname(__file__), "..", "build_worker.py"),
-            job_file, script_path, safe_name, dist_dir, work_dir, spec_dir,
+            job_file, script_path, safe_name, dist_dir, work_dir, spec_dir, workflow_id,
         ],
         # Detach from parent's stdin/stdout so the process is truly independent
         stdin=subprocess.DEVNULL,
@@ -193,7 +198,7 @@ def run_workflow(workflow_id):
     graph = get_workflow_graph(data_dir(), workflow_id)
 
     try:
-        script = generate_run_script(meta["name"], graph["nodes"], graph["edges"])
+        script = generate_run_script(meta["name"], workflow_id, graph["nodes"], graph["edges"])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 
@@ -202,24 +207,26 @@ def run_workflow(workflow_id):
 
     run_script_path = os.path.join(wf_output_dir, "_run.py")
     trace_path = os.path.join(wf_output_dir, "_trace.json")
+    final_output_path = os.path.join(wf_output_dir, "_final_output.json")
 
     with open(run_script_path, "w", encoding="utf-8") as f:
         f.write(script)
 
     env = os.environ.copy()
     env["WORKFLOW_TRACE_PATH"] = trace_path
+    env["WORKFLOW_FINAL_OUTPUT_PATH"] = final_output_path
 
     try:
         result = subprocess.run(
             [sys.executable, run_script_path],
             capture_output=True,
             text=True,
-            timeout=30,
+            timeout=RUN_TIMEOUT_SECONDS,
             env=env,
         )
     except subprocess.TimeoutExpired:
         return jsonify({
-            "error": "Workflow execution timed out (30s)",
+            "error": f"Workflow execution timed out ({RUN_TIMEOUT_SECONDS}s)",
             "traces": [],
             "output": "",
         }), 500
@@ -238,6 +245,14 @@ def run_workflow(workflow_id):
         except Exception:
             pass
 
+    final_output = None
+    if os.path.exists(final_output_path):
+        try:
+            with open(final_output_path, "r", encoding="utf-8") as f:
+                final_output = json.load(f)
+        except Exception:
+            final_output = None
+
     output = result.stderr + result.stdout
 
     if result.returncode != 0:
@@ -245,11 +260,13 @@ def run_workflow(workflow_id):
             "error": f"Script exited with code {result.returncode}",
             "traces": traces,
             "output": output.strip() or None,
+            "final_output": final_output,
         }), 422
 
     return jsonify({
         "traces": traces,
         "output": output.strip() or None,
+        "final_output": final_output,
     })
 
 

@@ -3,7 +3,15 @@ import { NODE_META } from '@/nodes';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function PropsPanel() {
-  const { nodes, setNodes, selectedNodeId, setSelectedNodeId, scheduleSave } = useWorkflow();
+  const {
+    nodes,
+    setNodes,
+    edges,
+    setEdges,
+    selectedNodeId,
+    setSelectedNodeId,
+    scheduleSave,
+  } = useWorkflow();
 
   const selectedNode = selectedNodeId != null
     ? nodes.find(n => n.id === String(selectedNodeId))
@@ -15,12 +23,29 @@ export default function PropsPanel() {
   const PropsForm = meta?.PropsForm;
 
   const handleConfigChange = (newConfig) => {
-    setNodes(prev => prev.map(n =>
+    const nextNodes = nodes.map(n => (
       n.id === selectedNode.id
         ? { ...n, data: { ...n.data, config: newConfig } }
         : n
     ));
-    scheduleSave();
+    setNodes(nextNodes);
+
+    if (selectedNode.type !== 'merge') {
+      scheduleSave(nextNodes, edges);
+      return;
+    }
+
+    const branchCount = Math.max(2, parseInt(newConfig.branch_count ?? 2, 10) || 2);
+    const nextEdges = edges.filter(e => {
+      if (String(e.target) !== String(selectedNode.id)) return true;
+      if (!e.targetHandle) return false;
+      const match = /^in-(\d+)$/.exec(e.targetHandle);
+      if (!match) return false;
+      return parseInt(match[1], 10) < branchCount;
+    });
+
+    setEdges(nextEdges);
+    scheduleSave(nextNodes, nextEdges);
   };
 
   return (

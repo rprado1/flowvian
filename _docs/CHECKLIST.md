@@ -29,6 +29,25 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | 16 | Botón Run para ejecutar workflow en el portal, con tabla de entrada/salida por nodo | ✅ Completado | Backend: `POST /api/workflows/{id}/run` ejecuta script instrumentado vía subprocess. Frontend: botón ▶ Run en topbar + panel inferior con tabla de resultados por nodo |
 | 17 | Los nodos deben tener un nombre único; al crear uno con tipo ya existente agregar sufijo numérico | ✅ Completado | `generateInstanceName()` en `app/static/js/app.js` asigna el primer nombre disponible. `updateNodeTitle()` actualiza el canvas. El `instanceName` se persiste como `label` en SQLite y se restaura al cargar el grafo |
 | 18 | Al eliminar un nodo con tecla Delete mientras el panel de propiedades está abierto, el panel debe cerrarse y no quedar bloqueado | ✅ Completado | Handler `nodeRemoved` en `app/static/js/app.js` limpia `editor.node_selected` (ref interna de Drawflow al DOM eliminado) y elimina la entrada huérfana de `nodeConfigs` |
+| 19 | El flujo de datos en cada nodo debe ser un array; el primer nodo tiene entrada `[{"workflowId","executionId","executionDate"}]` | ✅ Completado | `_items = [{"workflowId": ..., "executionId": ..., "executionDate": ...}]` en `generate_script()` y `generate_run_script()` |
+| 20 | Execution ID único random por ejecución | ✅ Completado | `EXECUTION_ID = str(uuid.uuid4())` en el script generado |
+| 21 | Cada nodo se ejecuta para los n items en el flujo actual | ✅ Completado | `for _item in _items:` en `_emit_item_loop()` de `app/nodes/base.py` |
+| 22 | Cada nodo con salida de datos debe tener la opción "Include Other Input Fields" | ✅ Completado | Checkbox en PropsForm de cada nodo (frontend). Backend: `include_flag` en `_emit_item_loop()` — mergea `{**_item, **_out}` |
+| 23 | Nodo merge con estrategia append | ✅ Completado | Backend: `app/nodes/merge.py` valida `strategy="append"` y `app/codegen/generator.py` aplica unión explícita en nodos `merge` con múltiples entradas. Frontend: `frontend/src/nodes/MergeNode.jsx` y registro en `frontend/src/nodes/index.js` |
+| 24 | Nodo merge concatena N ramas configurables (`branch_count`) | ✅ Completado | Frontend: handles dinámicos en `frontend/src/nodes/MergeNode.jsx` + input `Branches to combine`. Backend: validación de `branch_count` y de incoming edges en `app/nodes/merge.py` y `app/codegen/generator.py` |
+
+### Fase 3
+
+| # | Requerimiento | Estado | Notas |
+|---|---|---|---|
+| 25 | Nodo Wait por segundos únicamente | ✅ Completado | Backend: `app/nodes/wait.py` (`seconds` >= 0, `time.sleep`). Registro en `NODE_REGISTRY`. Frontend: `frontend/src/nodes/WaitNode.jsx` + `NODE_META.wait` en `frontend/src/nodes/index.js` |
+| 26 | Nodo HTTP Request (GET/POST) con headers custom y body raw JSON para POST | ✅ Completado | Backend: `app/nodes/http_request.py` + helpers en `app/codegen/generator.py` (`_perform_http_request`). Frontend: `frontend/src/nodes/HttpRequestNode.jsx` + registro `http_request` en `frontend/src/nodes/index.js` |
+| 27 | HTTP Request permite `${NOMBRE_VARIABLE}` en URL, headers y body raw JSON | ✅ Completado | Interpolación implementada en código generado con `_resolve_template` y `_resolve_json_template` (aplica a URL, headers y body). Incluye soporte de query params explícitos para GET |
+| 28 | Set Variables permite tipo por variable (String, Number, Boolean) | ✅ Completado | `app/nodes/set_variables.py` valida y convierte tipos; frontend agrega selector de tipo por fila en `frontend/src/nodes/SetVariablesNode.jsx`. Nota: además se extendió con `Array` y `Object` |
+| 29 | Set Variables soporta `${variable}` y layout vertical por fila (`key`, `type`, `value`) | ✅ Completado | Backend: interpolación por item con placeholders y `value_mode` (`literal/template/path`) en `app/nodes/set_variables.py`. Frontend: layout en líneas separadas y selector de origen de valor en `frontend/src/nodes/SetVariablesNode.jsx` |
+| 30 | Set Variables permite seleccionar un item interno cuando el input es object | ✅ Completado | Implementado mediante `value_mode = path` con resolución `args.country`, `items[0].id`, etc. en `app/nodes/set_variables.py` (`_resolve_item_path`) y UI en `frontend/src/nodes/SetVariablesNode.jsx` |
+| 31 | Nodo IF con `${VARIABLE}`, operador y comparaciones tipadas (string/number/boolean/object/array) | ✅ Completado | Backend: `app/nodes/if_node.py` con validación/evaluación tipada y múltiples condiciones AND/OR. Frontend: `frontend/src/nodes/IfNode.jsx` + registro en `frontend/src/nodes/index.js` |
+| 32 | Nodo Stop and Error | ✅ Completado | Backend: `app/nodes/stop_and_error.py` + manejo de stop local por ejecución actual en `app/codegen/generator.py` (`_StopIterationExecution`). Frontend: `frontend/src/nodes/StopAndErrorNode.jsx` + registro en `frontend/src/nodes/index.js` |
 
 ---
 
@@ -36,10 +55,10 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado | Cantidad |
 |---|---|
-| ✅ Completado | 18 |
+| ✅ Completado | 32 |
 | 🔄 En progreso | 0 |
 | ⏳ Pendiente | 0 |
 
 ---
 
-_Última actualización: 2026-06-12_
+_Última actualización: 2026-06-15_

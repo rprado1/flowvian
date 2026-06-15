@@ -1,107 +1,164 @@
 # AGENTS.md
 
-## Runtime
+Repository guide for coding agents working in `workflow-exe`.
 
-- **Python 3.9** — use `from __future__ import annotations` and `Optional[X]` from `typing`. The `X | Y` union syntax fails at runtime on 3.9.
-- Entry point: `python run.py` → Flask on `http://localhost:5000`
-- No test framework, no linter, no CI configured. Verify backend with:
+## Rules Discovery
+
+- Checked for Cursor rules in `.cursor/rules/` and `.cursorrules`: **none found**.
+- Checked for Copilot instructions in `.github/copilot-instructions.md`: **none found**.
+- This file is the primary agent guidance for this repo.
+
+## Runtime + Stack
+
+- Backend: **Python 3.9**, Flask 3.1, SQLite.
+- Frontend: **React 19**, Vite 8, React Flow v11, Tailwind v3, shadcn/ui.
+- Build packaging: PyInstaller `--onefile`.
+- App entrypoint: `python run.py` (run from repo root).
+
+## Build / Lint / Test Commands
+
+### Backend
+
+- Install deps:
+  ```bash
+  pip install -r requirements.txt
+  ```
+- Sanity import check:
   ```bash
   python -c "from app.main import app; print('OK')"
   ```
-- Quick API smoke-test via Flask test client (no server needed):
-  ```python
-  from app.main import app
-  client = app.test_client()
-  r = client.post('/api/workflows/', json={'name': 'test'})
-  ```
-
-## Architecture
-
-- `run.py` imports `app.main.app` — always run from the repo root so package imports resolve.
-- `app/main.py` sets `DATA_DIR` and `OUTPUT_DIR` on `app.config`; all DB and build code reads these via `current_app.config`. Do not hardcode paths.
-- Two Flask blueprints share the same URL prefix `/api/workflows`:
-  - `workflows_bp` — CRUD + graph save/load
-  - `builder_bp` — validate / preview / build / run / download
-- `data/` and `output/` are created at startup by `app/main.py`; never commit them.
-- Flask has **three explicit routes** for the React SPA (in `app/main.py`):
-  - `/assets/<path>` → `app/static/dist/assets/` (Vite JS/CSS chunks)
-  - `/<filename>` → `app/static/dist/<filename>` only if the file exists (favicon, etc.), otherwise falls through to `spa_index()`
-  - `/` → `app/static/dist/index.html`
-  - These routes must stay **above** any API blueprints in registration order. Do not collapse them into a single catch-all or the assets will 404.
-
-## Frontend
-
-- **React 19 + Vite 8 + React Flow v11 + shadcn/ui + Tailwind CSS v3.**
-- Source lives in `frontend/`. Built output goes to `app/static/dist/` (gitignored).
-- `app/static/dist/` **must be built before Flask can serve the app**. After cloning or changing frontend code:
+- Byte-compile key modules (quick syntax check):
   ```bash
-  cd frontend
-  npm install   # first time only
-  npm run build
+  python -m py_compile app/main.py app/codegen/generator.py app/api/builder.py
   ```
-- For HMR during development run both:
+
+### Frontend
+
+- Install deps:
   ```bash
-  python run.py          # terminal 1 — Flask on :5000
-  cd frontend && npm run dev  # terminal 2 — Vite on :5173 (proxies /api/* to :5000)
+  cd frontend && npm install
   ```
-- Vite asset paths are root-absolute (`/assets/...`). The three Flask routes above are what make this work. If you change `vite.config.js` `build.outDir`, update `DIST_DIR` in `app/main.py` too.
+- Dev server:
+  ```bash
+  cd frontend && npm run dev
+  ```
+- Build:
+  ```bash
+  cd frontend && npm run build
+  ```
+- Lint all frontend:
+  ```bash
+  cd frontend && npm run lint
+  ```
+- Lint a single file:
+  ```bash
+  cd frontend && npm run lint -- src/components/Canvas.jsx
+  ```
 
-## Frontend node system
+### Tests (current state)
 
-- Every node type has **two exports** in `frontend/src/nodes/{Type}Node.jsx`:
-  - **Default export** — React Flow canvas card component (`data.instanceName`, `data.config`)
-  - **Named export** `{Type}PropsForm` — controlled form component (`{ config, onChange }`)
-- Both are registered in `frontend/src/nodes/index.js`:
-  - `nodeTypes` — passed to `<ReactFlow nodeTypes={...}>` 
-  - `NODE_META` — contains `label`, `icon`, `inputs`, `outputs`, `defaultConfig()`, `PropsForm`
-- Node instance names live in `node.data.instanceName` (React Flow state), persisted as `label` in SQLite. `generateInstanceName()` in `WorkflowContext` auto-assigns unique names with numeric suffixes.
-- `deleteKeyCode="Delete"` on `<ReactFlow>` handles node deletion natively. The `onNodesDelete` callback closes the props panel reactively. No DOM focus management needed.
+- No pytest/unittest suite is configured.
+- Use API smoke tests with Flask test client.
+- Single-test equivalent (one endpoint):
+  ```bash
+  python -c "from app.main import app; c=app.test_client(); r=c.post('/api/workflows/', json={'name':'smoke'}); print(r.status_code, r.is_json)"
+  ```
+- Single workflow validation smoke:
+  ```bash
+  python -c "from app.codegen.generator import validate_graph; print(validate_graph([{'id':'n1','type':'set_variables','config':{'variables':[{'key':'x','value':'1'}]}}], []))"
+  ```
 
-## State management
+## Local Development Workflow
 
-- All graph state is in `WorkflowContext` (`frontend/src/context/WorkflowContext.jsx`) via `useNodesState` / `useEdgesState` from React Flow.
-- Auto-save debounce is 800 ms, implemented with `useRef` + `setTimeout` in `WorkflowContext.saveGraph`.
-- `saveGraph` maps React Flow node/edge format → API format. `loadGraph` does the reverse. Both mappings are in `WorkflowContext` — do not duplicate them elsewhere.
+- Terminal 1 (backend): `python run.py`
+- Terminal 2 (frontend): `cd frontend && npm run dev`
+- Production-like local run requires frontend build in `app/static/dist/`.
 
-## Database
+## Architecture Constraints
 
-- `data/main.db` — registry of all workflows (id, name, description, timestamps).
-- `data/{workflow_id}.db` — per-workflow SQLite with `nodes` and `edges` tables.
-- `nodes.label` stores the instance name (e.g. `"Set Variables 2"`), not the type string.
-- Node `config` is stored as a JSON string column; `get_workflow_graph()` deserialises it automatically.
-- `save_workflow_graph()` does a full replace (DELETE + INSERT) — it is not a merge.
+- `app/main.py` sets `DATA_DIR` and `OUTPUT_DIR` in `app.config`; use these everywhere.
+- Never hardcode `data/` or `output/` paths in request handlers.
+- Two blueprints share `/api/workflows`:
+  - `workflows_bp`: CRUD + graph persistence
+  - `builder_bp`: validate / preview / build / run / download
+- SPA serving in `app/main.py` uses explicit routes (`/assets/*`, `/<filename>`, `/`). Keep order intact.
 
-## Backend node system
+## Frontend Node System
 
-- Every node: subclass `BaseNode` (`app/nodes/base.py`), set `NODE_TYPE`, implement `validate() -> list[str]` and `to_code(indent) -> str`.
-- Register in `NODE_REGISTRY` in `app/codegen/generator.py` — if missing, build raises `ValueError: Unknown node type`.
-- `SchedulerNode` is special: `to_code()` emits only the `while True:` header; `loop_close_code()` emits the `time.sleep` at loop bottom. The generator calls both.
-- Only **one** Scheduler node per workflow is allowed; the generator enforces this.
-- Nodes placed **before** the Scheduler execute outside the loop (setup). Nodes **after** it execute inside the loop.
-- `_indent(code, spaces)` prefixes every line — use it in `to_code`, never manual string concat.
+- Each node file `frontend/src/nodes/{Type}Node.jsx` exports:
+  - default canvas component
+  - named `{Type}PropsForm`
+- Register both in `frontend/src/nodes/index.js`:
+  - `nodeTypes`
+  - `NODE_META` with `defaultConfig`, labels, io counts, `PropsForm`
+- Graph state is centralized in `WorkflowContext`.
+- Do not duplicate node/edge mapping logic outside `WorkflowContext`.
 
-## Code generation
+## Code Style Guidelines
 
-- `app/codegen/generator.py` uses `_topological_waves()` (Kahn's BFS) to group independent nodes into execution **waves**.
-- Single-node wave: emitted inline. Multi-node wave: wrapped in `ThreadPoolExecutor` with `wait(ALL_COMPLETED)`.
-- A cycle raises `ValueError` (surfaced as 422 from the build endpoint).
-- Generated scripts are written to `output/{workflow_id}/{safe_name}.py` before PyInstaller runs.
+### Python
 
-## Build / EXE
+- Use Python 3.9-compatible typing.
+- Prefer:
+  - `from __future__ import annotations`
+  - `Optional[T]` and `typing` generics
+- Avoid `X | Y` union syntax (not safe in this runtime).
+- Keep imports at module top. Do **not** emit function-local imports unless absolutely required.
+- Use explicit, descriptive names (`workflow_id`, `branch_count`, `incoming_count`).
+- Favor small helper functions over long inline blocks.
+- Error handling:
+  - validate early, return clear user-facing messages
+  - raise `ValueError` for invalid graph/codegen states
+  - preserve actionable context in error text
+- In generated code, keep deterministic ordering where possible.
 
-- Build is **async**: `POST /api/workflows/{id}/build` returns a `job_id` immediately. Poll `GET .../build/status/{job_id}` every 2 s.
-- PyInstaller `--onefile --noconfirm`. Output: `output/{workflow_id}/dist/{safe_name}.exe`.
-- `_safe_filename()` replaces non-alphanumeric characters (except `-_`) with `_`.
-- Build timeout: 300 s. First build is slow (~1 min) due to PyInstaller analysis.
-- `pyinstaller` must be on `PATH`; if missing, the endpoint returns 500 with a pip install hint.
+### JavaScript / React
 
-## Adding a new node (checklist)
+- Follow existing project style (semi-colons, single quotes, functional components).
+- Use hooks idiomatically (`useCallback`, `useEffect`, `useRef`) and stable deps.
+- Keep node props forms controlled (`config`, `onChange`).
+- Prefer immutable updates for nodes/edges.
+- Keep React Flow handles explicit and predictable (`input_1`, `output_1`, `in-0`, etc.).
+- Avoid hidden side effects in render paths.
 
-**Backend (Python):**
-1. `app/nodes/{type}.py` — subclass `BaseNode`, set `NODE_TYPE`
-2. Register in `NODE_REGISTRY` in `app/codegen/generator.py`
+### Formatting / Lint
 
-**Frontend (React):**
-3. `frontend/src/nodes/{Type}Node.jsx` — default canvas card + named `{Type}PropsForm`
-4. Register both in `frontend/src/nodes/index.js` (`nodeTypes` + `NODE_META`)
-5. `cd frontend && npm run build`
+- Frontend lint config is in `frontend/eslint.config.js`.
+- No backend formatter/linter configured; match existing code style closely.
+- Keep diffs minimal and focused on task intent.
+
+## Naming Conventions
+
+- Node type ids: snake_case (e.g., `get_current_date_utc`, `add_time_to_date`, `merge`).
+- React node component files: PascalCase + `Node.jsx`.
+- Props form export: `{Type}PropsForm`.
+- Backend node class names: PascalCase + `Node` suffix.
+
+## Data + Persistence
+
+- `data/main.db`: workflow registry.
+- `data/{workflow_id}.db`: per-workflow `nodes` + `edges`.
+- `save_workflow_graph()` is full replace (DELETE + INSERT), not patch merge.
+- `nodes.label` stores instance name, not node type.
+
+## Build / EXE Notes
+
+- Build endpoint is async and returns `job_id`.
+- Output exe path: `output/{workflow_id}/dist/{safe_name}.exe`.
+- First build can be slow due to PyInstaller analysis.
+- Do not commit generated `data/`, `output/`, or `app/static/dist/` artifacts.
+
+## Adding a New Node Checklist
+
+1. Add backend node class in `app/nodes/{type}.py`.
+2. Register class in `NODE_REGISTRY` (`app/codegen/generator.py`).
+3. Add frontend node component + props form in `frontend/src/nodes/{Type}Node.jsx`.
+4. Register in `frontend/src/nodes/index.js` (`nodeTypes` + `NODE_META`).
+5. Run `cd frontend && npm run build`.
+6. Run backend sanity import and a smoke API call.
+
+## Agent Behavior Expectations
+
+- Prefer small, verifiable changes.
+- After changes, run the narrowest relevant checks first, then broader checks.
+- If introducing behavior changes, update `README.md` and planning docs under `_docs/planning/`.

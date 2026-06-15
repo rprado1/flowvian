@@ -2,22 +2,85 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 
-function fmtCtx(ctx) {
-  if (!ctx || typeof ctx !== 'object') return null;
-  const entries = Object.entries(ctx).filter(([k]) => !k.startsWith('_')).slice(0, 20);
-  if (!entries.length) return null;
-  return entries.map(([k, v]) => {
-    let val = String(v ?? '');
-    if (val.length > 60) val = val.substring(0, 57) + '…';
-    return (
-      <span key={k} className="block">
-        <code className="run-ctx">{k}</code> = {val}
+function fmtItems(items) {
+  if (!items || !Array.isArray(items) || !items.length) {
+    return <span className="text-muted-foreground">—</span>;
+  }
+  
+  return (
+    <span className="block">
+      <span className="text-muted-foreground text-xs">
+        {items.length} item{items.length !== 1 ? 's' : ''}
       </span>
-    );
-  });
+      {items.slice(0, 3).map((item, idx) => {
+        const entries = Object.entries(item).slice(0, 5);
+        return (
+          <span key={idx} className="block text-xs mt-1 pl-2 border-l-2 border-border">
+            {entries.map(([k, v]) => {
+              let val = String(v ?? '');
+              if (val.length > 40) val = val.substring(0, 37) + '…';
+              return (
+                <span key={k} className="block">
+                  <code className="run-ctx">{k}</code> = {val}
+                </span>
+              );
+            })}
+            {Object.keys(item).length > 5 && (
+              <span className="text-muted-foreground">+{Object.keys(item).length - 5} more</span>
+            )}
+          </span>
+        );
+      })}
+      {items.length > 3 && (
+        <span className="text-xs text-muted-foreground pl-2">
+          +{items.length - 3} more items
+        </span>
+      )}
+    </span>
+  );
 }
 
-export default function RunPanel({ traces, output, onClose }) {
+export default function RunPanel({ traces, output, finalOutput, onClose }) {
+  const renderFinalOutput = (finalOutput) => {
+    if (finalOutput && finalOutput.status === 'stopped_current_execution') {
+      return (
+        <div className="mx-4 mt-2 rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+          <div className="font-semibold text-amber-700">Execution stopped (current run)</div>
+          <div className="text-muted-foreground mt-1">
+            {finalOutput.stop_reason || 'Execution stopped by Stop and Error node'}
+          </div>
+        </div>
+      );
+    }
+
+    if (!finalOutput || !finalOutput.branches || typeof finalOutput.branches !== 'object') {
+      return null;
+    }
+
+    const entries = Object.entries(finalOutput.branches);
+    if (!entries.length) {
+      return (
+        <div className="mx-4 mt-2 rounded-md border border-border p-2 text-xs text-muted-foreground">
+          Final Output: no terminal branches
+        </div>
+      );
+    }
+
+    return (
+      <div className="mx-4 mt-2 rounded-md border border-border p-2">
+        <div className="text-xs font-semibold mb-2">Final Output (by terminal branch)</div>
+        {entries.map(([branchId, items]) => (
+          <div key={branchId} className="mb-2 last:mb-0">
+            <div className="text-xs text-muted-foreground mb-1">
+              <code className="run-ctx">{branchId}</code>
+            </div>
+            <div className="text-xs">{fmtItems(items)}</div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div id="run-panel" className="flex flex-col" style={{ height: 240, flexShrink: 0 }}>
       {/* Header */}
@@ -32,6 +95,7 @@ export default function RunPanel({ traces, output, onClose }) {
         {output && (
           <pre className="build-log-pre mx-4 mt-2 text-xs" style={{ maxHeight: 80 }}>{output}</pre>
         )}
+        {renderFinalOutput(finalOutput)}
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
@@ -40,8 +104,8 @@ export default function RunPanel({ traces, output, onClose }) {
               <TableHead className="text-muted-foreground">Type</TableHead>
               <TableHead className="text-muted-foreground">Time</TableHead>
               <TableHead className="text-muted-foreground">Status</TableHead>
-              <TableHead className="text-muted-foreground">Input</TableHead>
-              <TableHead className="text-muted-foreground">Output</TableHead>
+              <TableHead className="text-muted-foreground">Items In</TableHead>
+              <TableHead className="text-muted-foreground">Items Out</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -52,8 +116,11 @@ export default function RunPanel({ traces, output, onClose }) {
                 </TableCell>
               </TableRow>
             )}
-            {traces.map((tr, i) => (
-              <TableRow key={i} className={`border-border ${tr.status === 'error' ? 'run-err' : 'run-ok'}`}>
+            {traces.map((tr, i) => {
+              const isStopped = tr.status === 'stopped_current_execution';
+              const rowClass = isStopped ? 'run-ok' : (tr.status !== 'ok' ? 'run-err' : 'run-ok');
+              return (
+              <TableRow key={i} className={`border-border ${rowClass}`}>
                 <TableCell className="text-xs">{i + 1}</TableCell>
                 <TableCell className="text-xs font-semibold">{tr.label || tr.id || '?'}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{tr.type || '?'}</TableCell>
@@ -61,17 +128,17 @@ export default function RunPanel({ traces, output, onClose }) {
                   {tr.ts ? new Date(tr.ts * 1000).toLocaleTimeString() : '—'}
                 </TableCell>
                 <TableCell className="text-xs">
-                  {tr.status === 'ok' ? '✅' : '❌'} {tr.status}
+                  {tr.status === 'ok' ? '✅' : (isStopped ? '🛑' : '❌')} {tr.status}
                 </TableCell>
-                <TableCell className="text-xs">{fmtCtx(tr.input) || <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-xs">{fmtItems(tr.items_in)}</TableCell>
                 <TableCell className="text-xs">
-                  {fmtCtx(tr.output) || <span className="text-muted-foreground">—</span>}
-                  {tr.status === 'error' && tr.error && (
-                    <span className="block text-destructive">{tr.error}</span>
+                  {fmtItems(tr.items_out)}
+                  {tr.error && (
+                    <span className={`block ${isStopped ? 'text-amber-700' : 'text-destructive'}`}>{tr.error}</span>
                   )}
                 </TableCell>
               </TableRow>
-            ))}
+            )})}
           </TableBody>
         </Table>
       </ScrollArea>
