@@ -43,3 +43,4 @@
 - 11.- Reguiero implemtnar el nodo Aggregate, que es el nod contrario a Split, el nodo agrega en una sola lista todos los items con todos sus campos
 - 12.- Requiero implementar un nodo para formatear una fecha, debe haber un campo para declarar una variable dentro del flujo ${VARIABLE}, un selector de formatos de fechas entro ellos Unix Ms Timestamp y un campo para definir el nombre de la variable con la fecha con formato, debe tener tambien tener el campo Include Other Input Fields
 - 13.- Requiero tener un nodo Sort que me permita ordena la lista del flujo de forma asc o desc de acuerdo a un campo
+- 14.- Requier crear un nodo Switch, similar al nodo if, solo que para cada condicion se considera una ruta de salida, solo los items del flujo quen concida con la condición iran a la ruta
