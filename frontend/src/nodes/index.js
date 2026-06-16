@@ -13,6 +13,7 @@ import SplitNode,                { SplitPropsForm }                from './Split
 import AggregateNode,            { AggregatePropsForm }            from './AggregateNode';
 import FormatDateNode,           { FormatDatePropsForm }           from './FormatDateNode';
 import SortNode,                 { SortPropsForm }                 from './SortNode';
+import SwitchNode,               { SwitchPropsForm }               from './SwitchNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -31,6 +32,7 @@ export const nodeTypes = {
   aggregate:               AggregateNode,
   format_date:             FormatDateNode,
   sort:                    SortNode,
+  switch:                  SwitchNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -221,5 +223,36 @@ export const NODE_META = {
       order: 'asc',
     }),
     PropsForm: SortPropsForm,
+  },
+  switch: {
+    label: 'Switch',
+    icon:  '🔀',
+    description: 'Route items by first matching condition',
+    inputs: 1,
+    outputs: 2,
+    defaultConfig: () => ({
+      routes: [
+        {
+          name: 'Route 1',
+          condition: {
+            input: '${value}',
+            data_type: 'string',
+            operator: 'equals',
+            compare_value: 'A',
+          },
+        },
+        {
+          name: 'Route 2',
+          condition: {
+            input: '${value}',
+            data_type: 'string',
+            operator: 'equals',
+            compare_value: 'B',
+          },
+        },
+      ],
+      discard_unmatched: true,
+    }),
+    PropsForm: SwitchPropsForm,
   },
 };

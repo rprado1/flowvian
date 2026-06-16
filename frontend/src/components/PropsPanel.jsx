@@ -30,19 +30,31 @@ export default function PropsPanel() {
     ));
     setNodes(nextNodes);
 
-    if (selectedNode.type !== 'merge') {
+    if (selectedNode.type !== 'merge' && selectedNode.type !== 'switch') {
       scheduleSave(nextNodes, edges);
       return;
     }
 
-    const branchCount = Math.max(2, parseInt(newConfig.branch_count ?? 2, 10) || 2);
-    const nextEdges = edges.filter(e => {
-      if (String(e.target) !== String(selectedNode.id)) return true;
-      if (!e.targetHandle) return false;
-      const match = /^in-(\d+)$/.exec(e.targetHandle);
-      if (!match) return false;
-      return parseInt(match[1], 10) < branchCount;
-    });
+    let nextEdges = edges;
+    if (selectedNode.type === 'merge') {
+      const branchCount = Math.max(2, parseInt(newConfig.branch_count ?? 2, 10) || 2);
+      nextEdges = edges.filter(e => {
+        if (String(e.target) !== String(selectedNode.id)) return true;
+        if (!e.targetHandle) return false;
+        const match = /^in-(\d+)$/.exec(e.targetHandle);
+        if (!match) return false;
+        return parseInt(match[1], 10) < branchCount;
+      });
+    }
+
+    if (selectedNode.type === 'switch') {
+      const routes = Array.isArray(newConfig.routes) ? newConfig.routes : [];
+      const allowedSourceHandles = new Set(routes.map((_, idx) => `route_${idx + 1}`));
+      nextEdges = edges.filter(e => {
+        if (String(e.source) !== String(selectedNode.id)) return true;
+        return allowedSourceHandles.has(String(e.sourceHandle || ''));
+      });
+    }
 
     setEdges(nextEdges);
     scheduleSave(nextNodes, nextEdges);

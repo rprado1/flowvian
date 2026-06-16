@@ -24,6 +24,7 @@ const NODE_CATEGORIES = {
   wait: 'Flow Control',
   http_request: 'Network',
   if: 'Logic',
+  switch: 'Logic',
   filter: 'Logic',
   stop_and_error: 'Flow Control',
   split: 'Data',
