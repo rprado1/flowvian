@@ -28,6 +28,7 @@ const NODE_CATEGORIES = {
   stop_and_error: 'Flow Control',
   split: 'Data',
   aggregate: 'Data',
+  sort: 'Data',
 };
 
 function getCategory(type) {

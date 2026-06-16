@@ -12,6 +12,7 @@ import StopAndErrorNode,         { StopAndErrorPropsForm }         from './StopA
 import SplitNode,                { SplitPropsForm }                from './SplitNode';
 import AggregateNode,            { AggregatePropsForm }            from './AggregateNode';
 import FormatDateNode,           { FormatDatePropsForm }           from './FormatDateNode';
+import SortNode,                 { SortPropsForm }                 from './SortNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -29,6 +30,7 @@ export const nodeTypes = {
   split:                   SplitNode,
   aggregate:               AggregateNode,
   format_date:             FormatDateNode,
+  sort:                    SortNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -207,5 +209,17 @@ export const NODE_META = {
       include_other_input_fields: false,
     }),
     PropsForm: FormatDatePropsForm,
+  },
+  sort: {
+    label: 'Sort',
+    icon:  '↕️',
+    description: 'Sort items by variable value',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      input: '${value}',
+      order: 'asc',
+    }),
+    PropsForm: SortPropsForm,
   },
 };
