@@ -119,6 +119,9 @@ Cambios esperados en PropsForm:
 - Input de valor tipo password para `secret`.
 - Mostrar siempre mascara (`********`) al volver a abrir configuracion.
 - Opcion de reemplazo de valor sin necesidad de revelar el actual.
+- Si existe al menos una variable `secret`, mostrar un icono de advertencia junto al bloque/configuracion.
+- El icono abre tooltip o popup con instruccion de configuracion de `W_METADATA_1` y ejemplo.
+- Ejemplo sugerido en UI: `W_METADATA_1="<MASTER_KEY_BASE64>"`.
 
 ### 5) Persistencia del workflow
 
@@ -160,7 +163,8 @@ Decision recomendada: cifrado en persistencia del nodo + descifrado solo en runt
 
 1. Backend: aceptar `type=secret`, cifrar al guardar y sanitizar respuestas.
 2. Frontend: agregar tipo `Secret` y mascara constante.
-3. Soportar reemplazo de valor secreto sin visualizacion del actual.
+3. Agregar icono de advertencia con tooltip/popup de configuracion de `W_METADATA_1` (con ejemplo).
+4. Soportar reemplazo de valor secreto sin visualizacion del actual.
 
 ### Fase D - Seguridad y validacion
 
@@ -177,6 +181,7 @@ Decision recomendada: cifrado en persistencia del nodo + descifrado solo en runt
 5. El formato `#{SECRET_NAME}` se detecta y resuelve con descifrado desde `W_METADATA_1`.
 6. El formato `${VAR_NAME}` sigue funcionando como hasta ahora.
 7. No se exponen secretos en logs, respuestas API ni vistas de ejecucion.
+8. Cuando existe una variable `secret` en Set Variables, la UI muestra advertencia con guia para configurar `W_METADATA_1` y un ejemplo.
 
 ## Riesgos y Mitigaciones
 
