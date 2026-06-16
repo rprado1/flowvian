@@ -23,8 +23,12 @@ from app.nodes.subtract_time_from_date import SubtractTimeFromDateNode
 from app.nodes.wait import WaitNode
 from app.nodes.http_request import HttpRequestNode
 from app.nodes.if_node import IfNode
+from app.nodes.filter import FilterNode
 from app.nodes.stop_and_error import StopAndErrorNode
 from app.nodes.split import SplitNode
+from app.nodes.aggregate import AggregateNode
+from app.nodes.format_date import FormatDateNode
+from app.nodes.sort import SortNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -37,8 +41,12 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     WaitNode.NODE_TYPE: WaitNode,
     HttpRequestNode.NODE_TYPE: HttpRequestNode,
     IfNode.NODE_TYPE: IfNode,
+    FilterNode.NODE_TYPE: FilterNode,
     StopAndErrorNode.NODE_TYPE: StopAndErrorNode,
     SplitNode.NODE_TYPE: SplitNode,
+    AggregateNode.NODE_TYPE: AggregateNode,
+    FormatDateNode.NODE_TYPE: FormatDateNode,
+    SortNode.NODE_TYPE: SortNode,
 }
 
 SCRIPT_HEADER = '''\

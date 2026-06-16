@@ -2,18 +2,18 @@
 
 Visual tool for creating workflows and compiling them as Windows `.exe` executables.
 
-Design the flow by dragging nodes onto an n8n-style canvas, configure each step, and generate a standalone `.exe` with one click.
+Design the flow by dragging nodes onto an drag-style canvas, configure each step, and generate a standalone `.exe` with one click.
 
 ---
 
 ## Tech stack
 
-| Layer | Technology |
-|---|---|
-| Backend | Python 3.9+, Flask 3.1, SQLite |
-| Frontend | React 19, Vite 8, React Flow v11 |
-| UI components | shadcn/ui + Tailwind CSS v3 |
-| Code generation | PyInstaller 6 (`--onefile`) |
+| Layer           | Technology                       |
+| --------------- | -------------------------------- |
+| Backend         | Python 3.9+, Flask 3.1, SQLite   |
+| Frontend        | React 19, Vite 8, React Flow v11 |
+| UI components   | shadcn/ui + Tailwind CSS v3      |
+| Code generation | PyInstaller 6 (`--onefile`)      |
 
 ---
 
@@ -120,13 +120,13 @@ This writes the bundle to `app/static/dist/`. Flask serves the assets via dedica
 
 ### Top bar
 
-| Element | Description |
-|---|---|
-| Workflow name | Click to rename |
-| **Preview Code** | Shows the generated Python code |
-| **Save** | Saves the graph manually (auto-save also runs 800 ms after any change) |
-| **▶ Run** | Executes the workflow and displays per-node input/output in the results panel |
-| **⚙ Generate EXE** | Compiles the workflow to a standalone `.exe` via PyInstaller |
+| Element            | Description                                                                   |
+| ------------------ | ----------------------------------------------------------------------------- |
+| Workflow name      | Click to rename                                                               |
+| **Preview Code**   | Shows the generated Python code                                               |
+| **Save**           | Saves the graph manually (auto-save also runs 800 ms after any change)        |
+| **▶ Run**          | Executes the workflow and displays per-node input/output in the results panel |
+| **⚙ Generate EXE** | Compiles the workflow to a standalone `.exe` via PyInstaller                  |
 
 ### Left sidebar
 
@@ -152,10 +152,10 @@ Appears after clicking **▶ Run**. Displays:
 
 Runs the workflow in a loop with a configurable pause between iterations. Only one Scheduler per workflow is allowed.
 
-| Field | Type | Description |
-|---|---|---|
-| Interval | number | Pause between iterations |
-| Unit | seconds / minutes / hours | Interval unit |
+| Field    | Type                      | Description              |
+| -------- | ------------------------- | ------------------------ |
+| Interval | number                    | Pause between iterations |
+| Unit     | seconds / minutes / hours | Interval unit            |
 
 ```python
 _sleep_seconds = 60.0
@@ -168,10 +168,10 @@ while True:
 
 Assigns key=value pairs to the workflow context.
 
-| Field | Description |
-|---|---|
-| key | Valid Python variable name |
-| value | Value (stored as string) |
+| Field | Description                |
+| ----- | -------------------------- |
+| key   | Valid Python variable name |
+| value | Value (stored as string)   |
 
 ```python
 my_variable = 'value'
@@ -181,8 +181,8 @@ my_variable = 'value'
 
 Captures the current UTC date/time into a variable.
 
-| Field | Description |
-|---|---|
+| Field                | Description                 |
+| -------------------- | --------------------------- |
 | Output variable name | Name of the result variable |
 
 ```python
@@ -193,11 +193,11 @@ current_date_utc = datetime.now(timezone.utc)
 
 Adds days, hours, minutes, and/or seconds to an existing datetime variable.
 
-| Field | Description |
-|---|---|
-| Input datetime variable | Variable holding the source datetime |
-| Days / Hours / Minutes / Seconds | Amount to add |
-| Output variable name | Name of the result variable |
+| Field                            | Description                          |
+| -------------------------------- | ------------------------------------ |
+| Input datetime variable          | Variable holding the source datetime |
+| Days / Hours / Minutes / Seconds | Amount to add                        |
+| Output variable name             | Name of the result variable          |
 
 ```python
 new_date = source_date + timedelta(days=1, hours=2)
@@ -207,11 +207,11 @@ new_date = source_date + timedelta(days=1, hours=2)
 
 Subtracts days, hours, minutes, and/or seconds from an existing datetime variable.
 
-| Field | Description |
-|---|---|
-| Input datetime variable | Variable holding the source datetime |
-| Days / Hours / Minutes / Seconds | Amount to subtract |
-| Output variable name | Name of the result variable |
+| Field                            | Description                          |
+| -------------------------------- | ------------------------------------ |
+| Input datetime variable          | Variable holding the source datetime |
+| Days / Hours / Minutes / Seconds | Amount to subtract                   |
+| Output variable name             | Name of the result variable          |
 
 ```python
 new_date = source_date - timedelta(minutes=30)
@@ -221,9 +221,9 @@ new_date = source_date - timedelta(minutes=30)
 
 Combines multiple incoming branches explicitly using strategy `append`.
 
-| Field | Description |
-|---|---|
-| Strategy | Fixed to `append` |
+| Field               | Description                                                     |
+| ------------------- | --------------------------------------------------------------- |
+| Strategy            | Fixed to `append`                                               |
 | Branches to combine | Number of incoming handles required (`branch_count`, minimum 2) |
 
 Notes:
@@ -364,21 +364,21 @@ workflow-exe/
 
 ## REST API
 
-| Method | Endpoint | Description |
-|---|---|---|
-| GET | `/api/workflows/` | List all workflows |
-| POST | `/api/workflows/` | Create a workflow |
-| GET | `/api/workflows/{id}` | Get metadata + graph |
-| PUT | `/api/workflows/{id}` | Rename / update metadata |
-| DELETE | `/api/workflows/{id}` | Delete workflow and its DB |
-| GET | `/api/workflows/{id}/graph` | Get nodes and edges |
-| POST | `/api/workflows/{id}/graph` | Save nodes and edges |
-| POST | `/api/workflows/{id}/validate` | Validate graph without compiling |
-| POST | `/api/workflows/{id}/preview` | Return the generated Python code |
-| POST | `/api/workflows/{id}/build` | Start async EXE compilation (returns `job_id`) |
-| GET | `/api/workflows/{id}/build/status/{job_id}` | Poll build job status |
-| GET | `/api/workflows/{id}/download` | Download the compiled `.exe` |
-| POST | `/api/workflows/{id}/run` | Execute workflow and return per-node traces |
+| Method | Endpoint                                    | Description                                    |
+| ------ | ------------------------------------------- | ---------------------------------------------- |
+| GET    | `/api/workflows/`                           | List all workflows                             |
+| POST   | `/api/workflows/`                           | Create a workflow                              |
+| GET    | `/api/workflows/{id}`                       | Get metadata + graph                           |
+| PUT    | `/api/workflows/{id}`                       | Rename / update metadata                       |
+| DELETE | `/api/workflows/{id}`                       | Delete workflow and its DB                     |
+| GET    | `/api/workflows/{id}/graph`                 | Get nodes and edges                            |
+| POST   | `/api/workflows/{id}/graph`                 | Save nodes and edges                           |
+| POST   | `/api/workflows/{id}/validate`              | Validate graph without compiling               |
+| POST   | `/api/workflows/{id}/preview`               | Return the generated Python code               |
+| POST   | `/api/workflows/{id}/build`                 | Start async EXE compilation (returns `job_id`) |
+| GET    | `/api/workflows/{id}/build/status/{job_id}` | Poll build job status                          |
+| GET    | `/api/workflows/{id}/download`              | Download the compiled `.exe`                   |
+| POST   | `/api/workflows/{id}/run`                   | Execute workflow and return per-node traces    |
 
 `POST /run` response includes:
 

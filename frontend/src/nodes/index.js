@@ -7,8 +7,12 @@ import MergeNode,                { MergePropsForm }                from './Merge
 import WaitNode,                 { WaitPropsForm }                 from './WaitNode';
 import HttpRequestNode,          { HttpRequestPropsForm }          from './HttpRequestNode';
 import IfNode,                   { IfPropsForm }                   from './IfNode';
+import FilterNode,               { FilterPropsForm }               from './FilterNode';
 import StopAndErrorNode,         { StopAndErrorPropsForm }         from './StopAndErrorNode';
 import SplitNode,                { SplitPropsForm }                from './SplitNode';
+import AggregateNode,            { AggregatePropsForm }            from './AggregateNode';
+import FormatDateNode,           { FormatDatePropsForm }           from './FormatDateNode';
+import SortNode,                 { SortPropsForm }                 from './SortNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -21,8 +25,12 @@ export const nodeTypes = {
   wait:                    WaitNode,
   http_request:            HttpRequestNode,
   if:                      IfNode,
+  filter:                  FilterNode,
   stop_and_error:          StopAndErrorNode,
   split:                   SplitNode,
+  aggregate:               AggregateNode,
+  format_date:             FormatDateNode,
+  sort:                    SortNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -130,6 +138,29 @@ export const NODE_META = {
     }),
     PropsForm: IfPropsForm,
   },
+  filter: {
+    label: 'Filter',
+    icon:  '🧹',
+    description: 'Keep only items matching conditions',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      input: '${value}',
+      data_type: 'string',
+      operator: 'equals',
+      compare_value: '',
+      conditions: [
+        {
+          join: 'and',
+          input: '${value}',
+          data_type: 'string',
+          operator: 'equals',
+          compare_value: '',
+        },
+      ],
+    }),
+    PropsForm: FilterPropsForm,
+  },
   stop_and_error: {
     label: 'Stop and Error',
     icon:  '⛔',
@@ -152,5 +183,43 @@ export const NODE_META = {
       include_other_input_fields: true,
     }),
     PropsForm: SplitPropsForm,
+  },
+  aggregate: {
+    label: 'Aggregate',
+    icon:  '🧺',
+    description: 'Collect all items into one list',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      output_var: 'items',
+      include_other_input_fields: false,
+    }),
+    PropsForm: AggregatePropsForm,
+  },
+  format_date: {
+    label: 'Format Date',
+    icon:  '🗓️',
+    description: 'Format a date to text/timestamp',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      input: '${current_date_utc}',
+      format: 'iso_8601',
+      output_var: 'formatted_date',
+      include_other_input_fields: false,
+    }),
+    PropsForm: FormatDatePropsForm,
+  },
+  sort: {
+    label: 'Sort',
+    icon:  '↕️',
+    description: 'Sort items by variable value',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      input: '${value}',
+      order: 'asc',
+    }),
+    PropsForm: SortPropsForm,
   },
 };
