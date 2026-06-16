@@ -23,7 +23,13 @@ from app.nodes.subtract_time_from_date import SubtractTimeFromDateNode
 from app.nodes.wait import WaitNode
 from app.nodes.http_request import HttpRequestNode
 from app.nodes.if_node import IfNode
+from app.nodes.filter import FilterNode
 from app.nodes.stop_and_error import StopAndErrorNode
+from app.nodes.split import SplitNode
+from app.nodes.aggregate import AggregateNode
+from app.nodes.format_date import FormatDateNode
+from app.nodes.sort import SortNode
+from app.nodes.switch import SwitchNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -36,7 +42,13 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     WaitNode.NODE_TYPE: WaitNode,
     HttpRequestNode.NODE_TYPE: HttpRequestNode,
     IfNode.NODE_TYPE: IfNode,
+    FilterNode.NODE_TYPE: FilterNode,
     StopAndErrorNode.NODE_TYPE: StopAndErrorNode,
+    SplitNode.NODE_TYPE: SplitNode,
+    AggregateNode.NODE_TYPE: AggregateNode,
+    FormatDateNode.NODE_TYPE: FormatDateNode,
+    SortNode.NODE_TYPE: SortNode,
+    SwitchNode.NODE_TYPE: SwitchNode,
 }
 
 SCRIPT_HEADER = '''\
@@ -438,6 +450,7 @@ def _emit_waves(
 
             lines.extend(_emit_node_input_setup(node_data, base_indent))
             lines.append(f"{pad}_branch_outputs = None")
+            lines.append(f"{pad}_node_debug = None")
 
             if instrument:
                 lines.append(f"{pad}_items_before = list(_items)")
@@ -455,7 +468,7 @@ def _emit_waves(
                 lines.append(f"{pad}            raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
                 lines.append(f"{pad}    if 'output_1' not in _node_outputs_norm:")
                 lines.append(f"{pad}        _node_outputs_norm['output_1'] = list(_items_after)")
-                lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after}})")
+                lines.append(f"{pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after, 'debug': _node_debug}})")
                 lines.append(f"{pad}    _node_items[{node_id!r}] = _items_after")
                 lines.append(f"{pad}    _node_outputs[{node_id!r}] = _node_outputs_norm")
                 lines.append(f"{pad}except _StopIterationExecution as _stop_ex:")
@@ -499,6 +512,7 @@ def _emit_waves(
                 lines.extend(_emit_node_input_setup(node_data, base_indent + 4))
                 inner_pad = " " * (base_indent + 4)
                 lines.append(f"{inner_pad}_branch_outputs = None")
+                lines.append(f"{inner_pad}_node_debug = None")
 
                 if instrument:
                     lines.append(f"{inner_pad}_items_before = list(_items)")
@@ -516,8 +530,8 @@ def _emit_waves(
                     lines.append(f"{inner_pad}            raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
                     lines.append(f"{inner_pad}    if 'output_1' not in _node_outputs_norm:")
                     lines.append(f"{inner_pad}        _node_outputs_norm['output_1'] = list(_items_after)")
-                    lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after}})")
-                    lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm}}")
+                    lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'ok', 'ts': time.time(), 'items_in': _items_before, 'items_out': _items_after, 'debug': _node_debug}})")
+                    lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm, 'debug': _node_debug}}")
                     lines.append(f"{inner_pad}except _StopIterationExecution as _stop_ex:")
                     lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'stopped_current_execution', 'ts': time.time(), 'items_in': _items_before, 'error': _stop_ex.message}})")
                     lines.append(f"{inner_pad}    raise")
@@ -538,7 +552,7 @@ def _emit_waves(
                     lines.append(f"{inner_pad}        raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
                     lines.append(f"{inner_pad}if 'output_1' not in _node_outputs_norm:")
                     lines.append(f"{inner_pad}    _node_outputs_norm['output_1'] = list(_items_after)")
-                    lines.append(f"{inner_pad}_wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm}}")
+                    lines.append(f"{inner_pad}_wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm, 'debug': _node_debug}}")
                 lines.append("")
 
             submits = ", ".join(

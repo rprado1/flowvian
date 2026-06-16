@@ -217,6 +217,10 @@
   font-size: 12px;
   transition: border-color 0.15s, background 0.15s;
 }
+.palette-node-compact {
+  padding: 6px 8px;
+  gap: 8px;
+}
 .palette-node:hover {
   border-color: hsl(var(--primary) / 0.6);
   background: hsl(var(--muted));

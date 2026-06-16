@@ -15,9 +15,9 @@ function FlowCanvas() {
   const {
     nodes, edges,
     onNodesChange, onEdgesChange,
-    setNodes, setEdges,
+    setEdges,
     selectedNodeId, setSelectedNodeId,
-    generateInstanceName,
+    addNode,
     scheduleSave,
     currentWfId,
   } = useWorkflow();
@@ -43,23 +43,8 @@ function FlowCanvas() {
       y: e.clientY - (bounds?.top ?? 0),
     });
 
-    const instanceName = generateInstanceName(type, nodes);
-    const newNode = {
-      id:       String(Date.now()),
-      type,
-      position,
-      data: {
-        instanceName,
-        config: NODE_META[type].defaultConfig(),
-      },
-    };
-
-    setNodes(prev => {
-      const next = [...prev, newNode];
-      scheduleSave(next, edges);
-      return next;
-    });
-  }, [currentWfId, nodes, edges, project, generateInstanceName, setNodes, scheduleSave]);
+    addNode(type, position);
+  }, [currentWfId, addNode, project]);
 
   // ── Node selection ───────────────────────────────────────────────────
   const onNodeClick = useCallback((_, node) => {
