@@ -93,6 +93,11 @@ _MAX_REQUEST_BODY_BYTES = 1_000_000
 _MAX_RESPONSE_BODY_BYTES = 2_000_000
 _SECRET_PREFIX = "enc:v1:"
 _secret_store = {}
+_current_node_label = ""
+
+def _set_current_node_label(_label):
+    global _current_node_label
+    _current_node_label = str(_label or "")
 
 def _load_master_key():
     _raw = os.environ.get("W_METADATA_1", "").strip()
@@ -143,6 +148,8 @@ def _resolve_secret_placeholders(_text):
     def _replace(_match):
         _name = _match.group(1)
         if _name not in _secret_store:
+            if _current_node_label:
+                raise ValueError(f"Missing secret: {_name} (node: {_current_node_label})")
             raise ValueError(f"Missing secret: {_name}")
         _value = _secret_store.get(_name)
         if _value is None:
@@ -330,7 +337,7 @@ def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
 
 WORKFLOW_MAIN_START = '''\
 def _run():
-    global _items, _final_output
+    global _items, _final_output, _secret_store
 '''
 
 WORKFLOW_MAIN_END = '''\
@@ -517,6 +524,7 @@ def _emit_waves(
             lines.extend(_emit_node_input_setup(node_data, base_indent))
             lines.append(f"{pad}_branch_outputs = None")
             lines.append(f"{pad}_node_debug = None")
+            lines.append(f"{pad}_set_current_node_label({node_label!r})")
 
             if instrument:
                 lines.append(f"{pad}_items_before = list(_items)")
@@ -579,6 +587,7 @@ def _emit_waves(
                 inner_pad = " " * (base_indent + 4)
                 lines.append(f"{inner_pad}_branch_outputs = None")
                 lines.append(f"{inner_pad}_node_debug = None")
+                lines.append(f"{inner_pad}_set_current_node_label({node_label!r})")
 
                 if instrument:
                     lines.append(f"{inner_pad}_items_before = list(_items)")
@@ -849,6 +858,11 @@ _MAX_REQUEST_BODY_BYTES = 1_000_000
 _MAX_RESPONSE_BODY_BYTES = 2_000_000
 _SECRET_PREFIX = "enc:v1:"
 _secret_store = {}
+_current_node_label = ""
+
+def _set_current_node_label(_label):
+    global _current_node_label
+    _current_node_label = str(_label or "")
 
 def _load_master_key():
     _raw = os.environ.get("W_METADATA_1", "").strip()
@@ -899,6 +913,8 @@ def _resolve_secret_placeholders(_text):
     def _replace(_match):
         _name = _match.group(1)
         if _name not in _secret_store:
+            if _current_node_label:
+                raise ValueError(f"Missing secret: {_name} (node: {_current_node_label})")
             raise ValueError(f"Missing secret: {_name}")
         _value = _secret_store.get(_name)
         if _value is None:
@@ -1141,7 +1157,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
             break
 
     lines.append("def _run():")
-    lines.append("    global _trace, _items, _final_output")
+    lines.append("    global _trace, _items, _final_output, _secret_store")
     lines.append("")
 
     if scheduler_wave_idx is not None:
