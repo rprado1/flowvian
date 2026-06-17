@@ -47,7 +47,6 @@
 
 # Fase 4
 
-- 1.- Requier una forma de almacenar secretos para mi ejecutable, cada workspace debe tener una pagina en donde se guarden secretos (key, value), se debe usar una base de datos sqlite, los valores value de la tabla deben estar encriptados, al crear un workspace se crea la base de datos y la tabla para guardar los secretos, se requiere una interfaz crud para guardar los secretos, en el portal los secretos se ofuscan, no deben verse, reemplazar por asteriscos
 - 2.- Requiero ahora implementar un nodo que me permite configurar https://developers.openai.com/api/reference/resources/responses/methods/create, los parametros debe ser los minimos para que finciones, los requeridos son base_url, api_key, model, message (Ejemplo input=[
   {
   "role": "system",
