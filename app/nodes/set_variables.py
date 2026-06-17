@@ -15,6 +15,7 @@ class SetVariablesNode(BaseNode):
     NODE_TYPE = "set_variables"
     _TPL_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
     _PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\]|\.[A-Za-z_][A-Za-z0-9_]*)*$")
+    _SECRET_PREFIX = "enc:v1:"
 
     @staticmethod
     def _normalize_type(raw_type) -> str:
@@ -115,7 +116,7 @@ class SetVariablesNode(BaseNode):
                 errors.append(f"set_variables: key '{key}' is not a valid Python identifier")
 
             var_type = self._normalize_type(item.get("type", "string"))
-            if var_type not in ("string", "number", "boolean", "array", "object"):
+            if var_type not in ("string", "number", "boolean", "array", "object", "secret"):
                 errors.append(f"set_variables: item {i} has invalid type '{var_type}'")
                 continue
 
@@ -123,6 +124,10 @@ class SetVariablesNode(BaseNode):
             value_mode = self._normalize_mode(item.get("value_mode"), value)
             if value_mode not in ("literal", "template", "path"):
                 errors.append(f"set_variables: item {i} has invalid value_mode '{value_mode}'")
+                continue
+
+            if var_type == "secret" and value_mode != "literal":
+                errors.append(f"set_variables: item {i} type 'secret' only supports literal mode")
                 continue
 
             if value_mode == "path":
@@ -197,6 +202,12 @@ class SetVariablesNode(BaseNode):
 
                 lines.append("if _sv_type == 'string':")
                 lines.append("    _out[_sv_key] = str(_sv_src)")
+                lines.append("elif _sv_type == 'secret':")
+                lines.append("    _sv_text = str(_sv_src)")
+                lines.append(f"    if _sv_text.startswith({repr(self._SECRET_PREFIX)}):")
+                lines.append("        _secret_store[_sv_key] = _decrypt_secret_value(_sv_text)")
+                lines.append("    else:")
+                lines.append("        _secret_store[_sv_key] = _sv_text")
                 lines.append("elif _sv_type == 'number':")
                 lines.append("    if isinstance(_sv_src, bool):")
                 lines.append("        raise ValueError(f\"set_variables: key '{_sv_key}' expected number, got boolean\")")

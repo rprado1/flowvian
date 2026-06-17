@@ -1,193 +1,205 @@
-# PLANNING1 - Nodo Aggregate
+# Plan de Implementacion - Nodo OpenAI Responses Create
 
-## 1) Objetivo
+## Estado
 
-Implementar el nodo `aggregate`, que realiza la operacion contraria a `split`:
+Documento de planificacion. **No contiene implementacion**.
 
-- Toma N items del flujo de entrada.
-- Los combina en un solo item de salida.
-- Dentro de ese item, genera una lista con todos los items originales y sus campos.
+## Objetivo
 
----
+Agregar un nuevo nodo que permita invocar el endpoint de OpenAI Responses Create:
 
-## 2) Alcance funcional
+- Referencia: `POST /responses`
+- Doc: `https://developers.openai.com/api/reference/resources/responses/methods/create`
 
-### Incluido
+Con parametros minimos requeridos por este alcance:
 
-- Nuevo nodo backend `aggregate`.
-- Una entrada y una salida en frontend.
-- Configuracion para nombre de campo de salida (lista agregada).
-- Opcion para conservar campos de contexto (si aplica).
-- Integracion completa con run/preview/build.
+- `base_url`
+- `api_key`
+- `model`
+- `message` (se mapeara a `input` del API)
+- `instructions`
+- `temperature`
 
-### No incluido (por ahora)
+## Alcance
 
-- Estrategias avanzadas de agregacion (sum, group by, distinct, etc.).
-- Agregacion por ventanas o lotes parciales.
-- Agregacion jerarquica por condiciones.
+Incluye:
 
----
+- Nodo backend + frontend (canvas + formulario).
+- Registro del nodo en `NODE_REGISTRY` y `NODE_META`.
+- Generacion de codigo para ejecutar la llamada HTTP a Responses API.
+- Validaciones minimas de configuracion.
+- Soporte de templates `${VAR}` y secretos `#{SECRET}` en campos string.
 
-## 3) Semantica de ejecucion
+No incluye (esta fase):
 
-Entrada:
+- Streaming de respuesta.
+- Tool calling avanzado.
+- Adjuntos multimedia.
+- Manejo de conversaciones persistentes fuera del item actual.
 
-- `_items` = lista de items (cada item es un objeto/dict).
+## Diseno Funcional del Nodo
 
-Salida esperada:
+### Nombre y tipo
 
-- `_items` con exactamente 1 item.
-- Ese item contiene una propiedad lista que debe ser definida en la configuracion (ej. `items`) con todos los items de entrada.
+- Node type: `openai_responses`
+- Label UI: `OpenAI Responses`
 
-Ejemplo:
+### Entradas / salidas
 
-Entrada:
+- Inputs: 1
+- Outputs: 1
 
-```json
-[
-  { "id": 1, "name": "A" },
-  { "id": 2, "name": "B" }
-]
-```
-
-Salida:
-
-```json
-[
-  {
-    "items": [
-      { "id": 1, "name": "A" },
-      { "id": 2, "name": "B" }
-    ]
-  }
-]
-```
-
----
-
-## 4) Contrato de configuracion propuesto
-
-Config minima:
+### Configuracion propuesta
 
 ```json
 {
-  "output_var": "items",
-  "include_other_input_fields": false
+  "base_url": "https://api.openai.com/v1",
+  "api_key": "#{OPENAI_API_KEY}",
+  "model": "gpt-5-mini",
+  "message": "[{\"role\":\"user\",\"content\":\"hello\"}]",
+  "instructions": "You are a helpful assistant.",
+  "temperature": 0.7,
+  "include_other_input_fields": true,
+  "output_var": "openai_response"
 }
 ```
 
-Reglas:
+Notas:
 
-- `output_var`:
-  - requerido,
-  - string no vacio,
-  - nombre del campo donde se guardara la lista agregada.
-- `include_other_input_fields`:
-  - opcional,
-  - boolean,
-  - si `true`, toma como base el primer item para conservar contexto y agrega `output_var` encima.
+- `message` se recibira en UI como texto (JSON) y se enviara como `input` al API.
+- `message` debe permitir placeholders del flujo, incluyendo variables `${VAR_NAME}` y secretos `#{SECRET_NAME}`.
+- `api_key` debe aceptar `#{SECRET_NAME}` para no exponer credenciales.
+- `output_var` define donde se guarda la salida principal en `_out`.
 
----
+## Mapeo al API OpenAI Responses
 
-## 5) Cambios backend
+El request final se construye asi:
 
-## 5.1 Nuevo nodo
+- URL: `{base_url}/responses`
+- Headers:
+  - `Authorization: Bearer <api_key>`
+  - `Content-Type: application/json`
+- Body JSON:
+  - `model`
+  - `input` (desde `message`)
+  - `instructions`
+  - `temperature`
 
-Crear `app/nodes/aggregate.py` con `AggregateNode(BaseNode)`.
+## Cambios Backend
 
-### validate()
+### 1) Nuevo nodo
 
-- Validar `output_var` no vacio.
-- Validar tipo booleano de `include_other_input_fields`.
+Crear archivo:
 
-### to_code()
+- `app/nodes/openai_responses.py`
 
-- Construir `_aggregated_list = list(_items)`.
-- Crear `_out = {output_var: _aggregated_list}`.
-- Si `include_other_input_fields = true` y hay items, fusionar con el primer item.
-- Reemplazar `_items` por lista de un solo item: `[_out]`.
-- Exponer `_node_debug` con conteo `items_in` y `items_out`.
+Responsabilidades:
 
-## 5.2 Registro
+- `validate()`:
+  - `base_url`, `api_key`, `model`, `message` no vacios.
+  - `temperature` numerica y en rango razonable (ej. 0 a 2).
+  - `message` parseable a JSON valido para `input`.
+- `to_code()`:
+  - Resolver templates/secretos.
+  - Construir request HTTP.
+  - Manejar errores HTTP y de parseo.
+  - Guardar respuesta estructurada en `output_var`.
 
-Actualizar `app/codegen/generator.py`:
+### 2) Registro del nodo
 
-- importar `AggregateNode`.
-- registrar en `NODE_REGISTRY`.
+Actualizar:
 
----
+- `app/codegen/generator.py` (`NODE_REGISTRY`).
 
-## 6) Cambios frontend
+### 3) Salida estandar del nodo
 
-## 6.1 Componente del nodo
+Propuesta de salida en `_out[output_var]`:
 
-Crear `frontend/src/nodes/AggregateNode.jsx`:
+- `ok` (bool)
+- `status_code` (int|None)
+- `response` (objeto JSON completo del endpoint)
+- `text` (best-effort: texto sintetizado desde la respuesta)
+- `error_message` (str|None)
 
-- 1 entrada (`input_1`).
-- 1 salida (`output_1`).
-- Descripcion: "Combine all items into one list".
+## Cambios Frontend
 
-## 6.2 PropsForm
+### 1) Componente del nodo
 
-Campos:
+Crear:
 
-- `Output variable` (texto), default `items`.
-- `Include Other Input Fields` (checkbox).
+- `frontend/src/nodes/OpenaiResponsesNode.jsx`
 
-## 6.3 Registro en catalogo
+Con:
 
-Actualizar `frontend/src/nodes/index.js`:
+- Card del nodo para canvas.
+- `OpenaiResponsesPropsForm` con campos:
+  - `base_url`
+  - `api_key` (input password, no visible en claro)
+  - `model`
+  - `message` (textarea JSON)
+  - `instructions` (textarea)
+  - `temperature` (number)
+  - `output_var`
+  - `include_other_input_fields`
 
-- `nodeTypes.aggregate = AggregateNode`.
-- `NODE_META.aggregate` con `defaultConfig` y `PropsForm`.
+### 2) Registro en indice de nodos
 
-## 6.4 Selector de nodos
+Actualizar:
 
-- Incluir `aggregate` en categoria de datos (`Data`) en el sidebar.
+- `frontend/src/nodes/index.js`
 
----
+Agregar:
 
-## 7) Pruebas sugeridas
+- `nodeTypes.openai_responses`
+- `NODE_META.openai_responses` con `defaultConfig` y `PropsForm`.
 
-## Backend (smoke)
+## Seguridad
 
-1. Con 3 items de entrada, salida tiene 1 item con lista de 3 elementos.
-2. `output_var` personalizado funciona (`records`, `all_rows`, etc.).
-3. `include_other_input_fields = true` conserva campos del primer item.
-4. Entrada vacia produce 1 item con lista vacia o comportamiento definido (decidir y documentar).
+- No loggear `api_key` ni headers de autorizacion.
+- Permitir uso de `#{...}` en `api_key` para tomar secreto descifrado en runtime.
+- Permitir en `message` tanto `${...}` como `#{...}` sin exponer secretos en logs.
+- En UI, mostrar `api_key` enmascarada.
 
-## Integracion
+## Validaciones y Errores
 
-5. Flujo `split -> aggregate` recompone estructura esperada.
-6. `run`, `preview` y `build` sin regresiones.
+- Si `message` no es JSON valido, error explicito de nodo.
+- `message` debe resolver placeholders `${...}` y `#{...}` antes de enviar a OpenAI.
+- Si `base_url` invalida, error claro.
+- Si la API responde error, retornar detalle sanitizado en `error_message`.
+- Si falta secreto referenciado, heredar error contextual existente (`Missing secret ... (node: ...)`).
 
-## Frontend
+## Plan por Fases
 
-7. Configuracion persiste tras guardar/cargar workflow.
-8. Conexion en canvas funciona con entrada/salida unica.
+### Fase A - Backend base
 
----
+1. Crear `OpenaiResponsesNode` con validacion y generacion de codigo.
+2. Registrar nodo en `NODE_REGISTRY`.
 
-## 8) Riesgos y decisiones
+### Fase B - Frontend
 
-### Riesgos
+1. Crear `OpenaiResponsesNode.jsx` y su `PropsForm`.
+2. Registrar nodo en `frontend/src/nodes/index.js`.
 
-- Ambiguedad sobre comportamiento cuando `_items` esta vacio.
-- Conflicto de nombre si `output_var` ya existe en contexto base.
+### Fase C - Integracion y pruebas
 
-### Mitigaciones
+1. Probar guardado/carga de configuracion del nodo.
+2. Probar llamada real a API con secreto en `api_key`.
+3. Validar salida en rama terminal y manejo de errores.
 
-- Definir explicitamente comportamiento para entrada vacia (recomendado: generar `[{output_var: []}]`).
-- En merge de contexto, priorizar `output_var` final sobre campos existentes.
+## Criterios de Aceptacion
 
-### Decisiones recomendadas
+1. Existe nodo `openai_responses` disponible en el editor.
+2. El nodo permite configurar `base_url`, `api_key`, `model`, `message`, `instructions`, `temperature`.
+3. `message` se envia como `input` al endpoint `/responses`.
+4. `message` soporta `${VAR}` y `#{SECRET}` para usar variables y secretos del flujo.
+5. No se expone `api_key` en UI/logs.
+6. La salida del nodo queda disponible para nodos siguientes en `output_var`.
 
-1. Mantener salida siempre como un solo item.
-2. `output_var` default: `items`.
-3. Default UX `include_other_input_fields = false` para evitar resultados inesperados.
+## Riesgos y Mitigaciones
 
----
-
-## 9) Resultado esperado
-
-Contar con un nodo `aggregate` que permita consolidar todos los items del flujo en una sola lista dentro de un unico item de salida, simplificando escenarios de post-procesamiento, respuesta final y serializacion de resultados.
+- Riesgo: formato variable de respuesta entre modelos.
+  - Mitigacion: guardar respuesta completa + extraer `text` con best-effort.
+- Riesgo: errores por JSON invalido en `message`.
+  - Mitigacion: validacion en frontend y backend.
+- Riesgo: credenciales mal configuradas.
+  - Mitigacion: mensajes claros y soporte de secretos `#{...}`.

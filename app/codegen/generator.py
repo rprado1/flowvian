@@ -30,6 +30,7 @@ from app.nodes.aggregate import AggregateNode
 from app.nodes.format_date import FormatDateNode
 from app.nodes.sort import SortNode
 from app.nodes.switch import SwitchNode
+from app.nodes.openai_responses import OpenaiResponsesNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -49,6 +50,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     FormatDateNode.NODE_TYPE: FormatDateNode,
     SortNode.NODE_TYPE: SortNode,
     SwitchNode.NODE_TYPE: SwitchNode,
+    OpenaiResponsesNode.NODE_TYPE: OpenaiResponsesNode,
 }
 
 SCRIPT_HEADER = '''\
@@ -63,6 +65,9 @@ import logging
 import traceback
 import uuid
 import re
+import base64
+import hashlib
+import hmac
 import socket
 import ipaddress
 from datetime import datetime, timezone
@@ -85,8 +90,75 @@ logging.basicConfig(
 _logger = logging.getLogger(__name__)
 
 _TPL_VAR_RE = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
+_SECRET_VAR_RE = re.compile(r"#\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 _MAX_REQUEST_BODY_BYTES = 1_000_000
 _MAX_RESPONSE_BODY_BYTES = 2_000_000
+_SECRET_PREFIX = "enc:v1:"
+_secret_store = {}
+_current_node_label = ""
+
+def _set_current_node_label(_label):
+    global _current_node_label
+    _current_node_label = str(_label or "")
+
+def _load_master_key():
+    _raw = os.environ.get("W_METADATA_1", "").strip()
+    if not _raw:
+        raise ValueError("Missing required environment variable: W_METADATA_1")
+    return _raw.encode("utf-8")
+
+def _derive_stream_key(_master_key, _salt):
+    return hashlib.pbkdf2_hmac("sha256", _master_key, _salt, 120000, dklen=32)
+
+def _xor_bytes(_data, _stream):
+    _out = bytearray(len(_data))
+    _stream_len = len(_stream)
+    for _idx, _byte in enumerate(_data):
+        _out[_idx] = _byte ^ _stream[_idx % _stream_len]
+    return bytes(_out)
+
+def _decrypt_secret_value(_ciphertext):
+    if not isinstance(_ciphertext, str) or not _ciphertext.startswith(_SECRET_PREFIX):
+        raise ValueError("Invalid encrypted secret format")
+    _payload_b64 = _ciphertext[len(_SECRET_PREFIX):]
+    try:
+        _payload = base64.urlsafe_b64decode(_payload_b64.encode("ascii"))
+    except Exception as _ex:
+        raise ValueError("Invalid encrypted secret payload") from _ex
+    if len(_payload) < 48:
+        raise ValueError("Encrypted secret payload is too short")
+
+    _salt = _payload[:16]
+    _mac = _payload[16:48]
+    _cipher_bytes = _payload[48:]
+    _master_key = _load_master_key()
+    _expected_mac = hmac.new(_master_key, _salt + _cipher_bytes, hashlib.sha256).digest()
+    if not hmac.compare_digest(_mac, _expected_mac):
+        raise ValueError("Secret integrity check failed")
+
+    _stream = _derive_stream_key(_master_key, _salt)
+    _plain = _xor_bytes(_cipher_bytes, _stream)
+    try:
+        return _plain.decode("utf-8")
+    except Exception as _ex:
+        raise ValueError("Decrypted secret is not valid UTF-8") from _ex
+
+def _resolve_secret_placeholders(_text):
+    if not isinstance(_text, str):
+        return _text
+
+    def _replace(_match):
+        _name = _match.group(1)
+        if _name not in _secret_store:
+            if _current_node_label:
+                raise ValueError(f"Missing secret: {_name} (node: {_current_node_label})")
+            raise ValueError(f"Missing secret: {_name}")
+        _value = _secret_store.get(_name)
+        if _value is None:
+            return ""
+        return str(_value)
+
+    return _SECRET_VAR_RE.sub(_replace, _text)
 
 class _StopIterationExecution(Exception):
     def __init__(self, message, node_id=None, node_type=None):
@@ -98,6 +170,8 @@ class _StopIterationExecution(Exception):
 def _resolve_template(_text, _item):
     if not isinstance(_text, str):
         return _text
+
+    _text = _resolve_secret_placeholders(_text)
 
     def _replace(_match):
         _name = _match.group(1)
@@ -116,6 +190,7 @@ def _resolve_json_template(_obj, _item):
     if isinstance(_obj, list):
         return [_resolve_json_template(_v, _item) for _v in _obj]
     if isinstance(_obj, str):
+        _obj = _resolve_secret_placeholders(_obj)
         _m = _TPL_VAR_RE.fullmatch(_obj)
         if _m:
             _name = _m.group(1)
@@ -264,7 +339,7 @@ def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
 
 WORKFLOW_MAIN_START = '''\
 def _run():
-    global _items, _final_output
+    global _items, _final_output, _secret_store
 '''
 
 WORKFLOW_MAIN_END = '''\
@@ -451,6 +526,7 @@ def _emit_waves(
             lines.extend(_emit_node_input_setup(node_data, base_indent))
             lines.append(f"{pad}_branch_outputs = None")
             lines.append(f"{pad}_node_debug = None")
+            lines.append(f"{pad}_set_current_node_label({node_label!r})")
 
             if instrument:
                 lines.append(f"{pad}_items_before = list(_items)")
@@ -513,6 +589,7 @@ def _emit_waves(
                 inner_pad = " " * (base_indent + 4)
                 lines.append(f"{inner_pad}_branch_outputs = None")
                 lines.append(f"{inner_pad}_node_debug = None")
+                lines.append(f"{inner_pad}_set_current_node_label({node_label!r})")
 
                 if instrument:
                     lines.append(f"{inner_pad}_items_before = list(_items)")
@@ -673,6 +750,7 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
     # Initialize _items array with workflow context
     lines.append("# ---- Initialize items array ----")
     lines.append("EXECUTION_ID = str(uuid.uuid4())")
+    lines.append("_secret_store = {}")
     lines.append("_items = [{")
     lines.append('    "workflowId": WORKFLOW_ID,')
     lines.append('    "executionId": EXECUTION_ID,')
@@ -714,6 +792,7 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
 
         # Reset execution context on each scheduler tick
         lines.append("        EXECUTION_ID = str(uuid.uuid4())")
+        lines.append("        _secret_store = {}")
         lines.append("        _items = [{")
         lines.append('            "workflowId": WORKFLOW_ID,')
         lines.append('            "executionId": EXECUTION_ID,')
@@ -758,6 +837,9 @@ import json
 import time
 import uuid
 import re
+import base64
+import hashlib
+import hmac
 import socket
 import ipaddress
 from datetime import datetime, timezone
@@ -773,8 +855,75 @@ _final_output = {}
 _final_output_path = os.environ.get("WORKFLOW_FINAL_OUTPUT_PATH", "")
 
 _TPL_VAR_RE = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
+_SECRET_VAR_RE = re.compile(r"#\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 _MAX_REQUEST_BODY_BYTES = 1_000_000
 _MAX_RESPONSE_BODY_BYTES = 2_000_000
+_SECRET_PREFIX = "enc:v1:"
+_secret_store = {}
+_current_node_label = ""
+
+def _set_current_node_label(_label):
+    global _current_node_label
+    _current_node_label = str(_label or "")
+
+def _load_master_key():
+    _raw = os.environ.get("W_METADATA_1", "").strip()
+    if not _raw:
+        raise ValueError("Missing required environment variable: W_METADATA_1")
+    return _raw.encode("utf-8")
+
+def _derive_stream_key(_master_key, _salt):
+    return hashlib.pbkdf2_hmac("sha256", _master_key, _salt, 120000, dklen=32)
+
+def _xor_bytes(_data, _stream):
+    _out = bytearray(len(_data))
+    _stream_len = len(_stream)
+    for _idx, _byte in enumerate(_data):
+        _out[_idx] = _byte ^ _stream[_idx % _stream_len]
+    return bytes(_out)
+
+def _decrypt_secret_value(_ciphertext):
+    if not isinstance(_ciphertext, str) or not _ciphertext.startswith(_SECRET_PREFIX):
+        raise ValueError("Invalid encrypted secret format")
+    _payload_b64 = _ciphertext[len(_SECRET_PREFIX):]
+    try:
+        _payload = base64.urlsafe_b64decode(_payload_b64.encode("ascii"))
+    except Exception as _ex:
+        raise ValueError("Invalid encrypted secret payload") from _ex
+    if len(_payload) < 48:
+        raise ValueError("Encrypted secret payload is too short")
+
+    _salt = _payload[:16]
+    _mac = _payload[16:48]
+    _cipher_bytes = _payload[48:]
+    _master_key = _load_master_key()
+    _expected_mac = hmac.new(_master_key, _salt + _cipher_bytes, hashlib.sha256).digest()
+    if not hmac.compare_digest(_mac, _expected_mac):
+        raise ValueError("Secret integrity check failed")
+
+    _stream = _derive_stream_key(_master_key, _salt)
+    _plain = _xor_bytes(_cipher_bytes, _stream)
+    try:
+        return _plain.decode("utf-8")
+    except Exception as _ex:
+        raise ValueError("Decrypted secret is not valid UTF-8") from _ex
+
+def _resolve_secret_placeholders(_text):
+    if not isinstance(_text, str):
+        return _text
+
+    def _replace(_match):
+        _name = _match.group(1)
+        if _name not in _secret_store:
+            if _current_node_label:
+                raise ValueError(f"Missing secret: {_name} (node: {_current_node_label})")
+            raise ValueError(f"Missing secret: {_name}")
+        _value = _secret_store.get(_name)
+        if _value is None:
+            return ""
+        return str(_value)
+
+    return _SECRET_VAR_RE.sub(_replace, _text)
 
 class _StopIterationExecution(Exception):
     def __init__(self, message, node_id=None, node_type=None):
@@ -786,6 +935,8 @@ class _StopIterationExecution(Exception):
 def _resolve_template(_text, _item):
     if not isinstance(_text, str):
         return _text
+
+    _text = _resolve_secret_placeholders(_text)
 
     def _replace(_match):
         _name = _match.group(1)
@@ -804,6 +955,7 @@ def _resolve_json_template(_obj, _item):
     if isinstance(_obj, list):
         return [_resolve_json_template(_v, _item) for _v in _obj]
     if isinstance(_obj, str):
+        _obj = _resolve_secret_placeholders(_obj)
         _m = _TPL_VAR_RE.fullmatch(_obj)
         if _m:
             _name = _m.group(1)
@@ -990,6 +1142,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     # Initialize _items array with workflow context
     lines.append("# ---- Initialize items array ----")
     lines.append("EXECUTION_ID = str(uuid.uuid4())")
+    lines.append("_secret_store = {}")
     lines.append("_items = [{")
     lines.append('    "workflowId": WORKFLOW_ID,')
     lines.append('    "executionId": EXECUTION_ID,')
@@ -1006,7 +1159,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
             break
 
     lines.append("def _run():")
-    lines.append("    global _trace, _items, _final_output")
+    lines.append("    global _trace, _items, _final_output, _secret_store")
     lines.append("")
 
     if scheduler_wave_idx is not None:
