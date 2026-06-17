@@ -30,6 +30,7 @@ from app.nodes.aggregate import AggregateNode
 from app.nodes.format_date import FormatDateNode
 from app.nodes.sort import SortNode
 from app.nodes.switch import SwitchNode
+from app.nodes.openai_responses import OpenaiResponsesNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -49,6 +50,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     FormatDateNode.NODE_TYPE: FormatDateNode,
     SortNode.NODE_TYPE: SortNode,
     SwitchNode.NODE_TYPE: SwitchNode,
+    OpenaiResponsesNode.NODE_TYPE: OpenaiResponsesNode,
 }
 
 SCRIPT_HEADER = '''\
