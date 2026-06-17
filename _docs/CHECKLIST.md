@@ -55,16 +55,23 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | 37  | Nodo para formatear fecha con `${VARIABLE}`, selector de formato (incluye Unix Ms Timestamp), output var e Include Other Input Fields | ✅ Completado | Backend: `app/nodes/format_date.py` con formatos `iso_8601`, `unix_timestamp`, `unix_ms_timestamp`, etc. Registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/FormatDateNode.jsx` + `NODE_META.format_date`                  |
 | 38  | Nodo Sort para ordenar lista asc/desc                                                                                                 | ✅ Completado | Backend: `app/nodes/sort.py` (orden `asc/desc`) con entrada por placeholder `${VARNAME}` (ajuste solicitado). Registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/SortNode.jsx` + `NODE_META.sort`                          |
 
+### Fase 4
+
+| #   | Requerimiento                                                                                                                              | Estado       | Notas                                                                                                                                                                                                                                                                           |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 39  | Almacenamiento de secretos por workspace (SQLite + valores cifrados + CRUD + ofuscado en portal)                                         | ⏳ Pendiente | Actualmente se implemento un enfoque alterno basado en `Set Variables` tipo `secret` + clave maestra `W_METADATA_1` (sin DB de secretos por workspace ni CRUD dedicado). Para cumplir este requerimiento literal falta la capa SQLite/CRUD por workspace solicitada en Fase 4. |
+| 40  | Nodo OpenAI Responses Create con parámetros mínimos (`base_url`, `api_key`, `model`, `message/input`, `instructions`, `temperature`)     | ✅ Completado | Backend: `app/nodes/openai_responses.py` + registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/OpenaiResponsesNode.jsx` + registro en `frontend/src/nodes/index.js`. `message` soporta `${VAR}` y `#{SECRET}` dentro del flujo.                          |
+
 ---
 
 ## Resumen
 
 | Estado         | Cantidad |
 | -------------- | -------- |
-| ✅ Completado  | 38       |
+| ✅ Completado  | 39       |
 | 🔄 En progreso | 0        |
-| ⏳ Pendiente   | 0        |
+| ⏳ Pendiente   | 1        |
 
 ---
 
-_Última actualización: 2026-06-15_
+_Última actualización: 2026-06-16_
