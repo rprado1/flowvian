@@ -272,11 +272,13 @@ Required config:
 - `message` (JSON array sent as `input`)
 - `instructions`
 - `temperature`
+- `output_json_schema` (optional JSON object for structured outputs)
 
 Notes:
 
 - `message` supports placeholders `${VAR}` and secrets `#{SECRET}`.
 - `api_key` can use secrets via `#{OPENAI_API_KEY}`.
+- When `output_json_schema` is set, request includes `text.format` with `type: json_schema`, `name`, `strict`, and `schema`.
 - Output is stored in `output_var` (default: `openai_response`) with:
   - `ok`
   - `status_code`

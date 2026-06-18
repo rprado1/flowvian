@@ -273,6 +273,7 @@ export const NODE_META = {
       ],
       instructions: 'You are a helpful assistant.',
       temperature: 0.7,
+      output_json_schema: '',
       output_var: 'openai_response',
       include_other_input_fields: true,
     }),

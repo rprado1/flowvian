@@ -1,6 +1,6 @@
 import json
 from urllib.parse import urlparse
-from typing import Any
+from typing import Any, Optional
 
 from app.nodes.base import BaseNode
 
@@ -48,6 +48,36 @@ class OpenaiResponsesNode(BaseNode):
 
         return normalized, errors
 
+    def _normalize_output_schema(self) -> tuple[Optional[dict[str, Any]], list[str]]:
+        raw_schema = self.config.get("output_json_schema")
+
+        if raw_schema is None:
+            return None, []
+
+        if isinstance(raw_schema, str):
+            schema_text = raw_schema.strip()
+            if not schema_text:
+                return None, []
+            try:
+                parsed = json.loads(schema_text)
+            except Exception:
+                return None, ["openai_responses: output_json_schema must be valid JSON"]
+            raw_schema = parsed
+
+        if not isinstance(raw_schema, dict):
+            return None, ["openai_responses: output_json_schema must be a JSON object"]
+
+        # Accepts either:
+        # 1) Plain JSON Schema object
+        # 2) Wrapper object with top-level {"schema": {...}}
+        if "schema" in raw_schema:
+            schema_obj = raw_schema.get("schema")
+            if not isinstance(schema_obj, dict):
+                return None, ["openai_responses: output_json_schema.schema must be a JSON object"]
+            return schema_obj, []
+
+        return raw_schema, []
+
     def validate(self) -> list[str]:
         errors: list[str] = []
 
@@ -94,6 +124,9 @@ class OpenaiResponsesNode(BaseNode):
         if not isinstance(include_flag, bool):
             errors.append("openai_responses: include_other_input_fields must be a boolean")
 
+        _, schema_errors = self._normalize_output_schema()
+        errors.extend(schema_errors)
+
         return errors
 
     def to_code(self, indent: int = 0) -> str:
@@ -104,6 +137,7 @@ class OpenaiResponsesNode(BaseNode):
         instructions = str(self.config.get("instructions", "")).strip()
         temperature = float(self.config.get("temperature", 0.7) or 0.7)
         output_var = str(self.config.get("output_var", "openai_response")).strip() or "openai_response"
+        output_schema, _ = self._normalize_output_schema()
 
         lines = [
             "# OpenAI Responses",
@@ -114,6 +148,7 @@ class OpenaiResponsesNode(BaseNode):
             f"_or_instructions_t = {instructions!r}",
             f"_or_temperature = {temperature!r}",
             f"_or_output_var = {output_var!r}",
+            f"_or_output_schema_template = {output_schema!r}",
             "_out[_or_output_var] = {'ok': False, 'status_code': None, 'response': None, 'text': None, 'error_message': None}",
             "try:",
             "    _or_base_url = _resolve_template(_or_base_url_t, _item).rstrip('/')",
@@ -121,6 +156,7 @@ class OpenaiResponsesNode(BaseNode):
             "    _or_model = _resolve_template(_or_model_t, _item).strip()",
             "    _or_instructions = _resolve_template(_or_instructions_t, _item)",
             "    _or_input = _resolve_json_template(_or_message_template, _item)",
+            "    _or_output_schema = _resolve_json_template(_or_output_schema_template, _item) if _or_output_schema_template is not None else None",
             "",
             "    if not _or_base_url:",
             "        raise ValueError('openai_responses: base_url is empty after template resolution')",
@@ -128,6 +164,8 @@ class OpenaiResponsesNode(BaseNode):
             "        raise ValueError('openai_responses: api_key is empty after template resolution')",
             "    if not _or_model:",
             "        raise ValueError('openai_responses: model is empty after template resolution')",
+            "    if _or_output_schema is not None and not isinstance(_or_output_schema, dict):",
+            "        raise ValueError('openai_responses: output_json_schema must resolve to a JSON object')",
             "",
             "    _or_url = _or_base_url + '/responses'",
             "    _validate_target_url(_or_url)",
@@ -141,6 +179,8 @@ class OpenaiResponsesNode(BaseNode):
             "        'instructions': _or_instructions,",
             "        'temperature': _or_temperature,",
             "    }",
+            "    if _or_output_schema is not None:",
+            "        _or_body['text'] = {'format': {'type': 'json_schema', 'name': 'response', 'strict': True, 'schema': _or_output_schema}}",
             "",
             "    _or_result = _perform_http_request(",
             "        method='POST',",

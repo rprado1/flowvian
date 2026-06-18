@@ -8,12 +8,16 @@ import { Button } from '@/components/ui/button';
 export default function OpenaiResponsesNode({ data }) {
   const model = data.config?.model || 'gpt-5-mini';
   const out = data.config?.output_var || 'openai_response';
+  const hasStructured = typeof data.config?.output_json_schema === 'string'
+    ? data.config.output_json_schema.trim().length > 0
+    : !!data.config?.output_json_schema;
 
   return (
     <BaseNode icon="🤖" instanceName={data.instanceName} inputs={1} outputs={1}>
       <div className="text-xs space-y-1">
         <div className="font-semibold truncate max-w-[180px]">{model}</div>
         <div className="text-muted-foreground truncate max-w-[180px]">{out}</div>
+        {hasStructured && <div className="text-[10px] text-emerald-600">structured output</div>}
       </div>
     </BaseNode>
   );
@@ -135,6 +139,19 @@ export function OpenaiResponsesPropsForm({ config, onChange }) {
           onChange={e => onChange({ ...config, instructions: e.target.value })}
           className="text-xs min-h-[90px]"
         />
+      </div>
+
+      <div className="prop-group">
+        <Label>Output JSON Schema (optional)</Label>
+        <Textarea
+          value={config.output_json_schema || ''}
+          placeholder={'{\n  "type": "object",\n  "properties": {\n    "answer": {\n      "type": "string"\n    }\n  },\n  "additionalProperties": false,\n  "required": ["answer"]\n}'}
+          onChange={e => onChange({ ...config, output_json_schema: e.target.value })}
+          className="text-xs min-h-[140px] font-mono"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Paste only the JSON Schema object. The node builds <code>text.format</code> automatically.
+        </p>
       </div>
 
       <div className="prop-group">

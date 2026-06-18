@@ -59,8 +59,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | #   | Requerimiento                                                                                                                              | Estado       | Notas                                                                                                                                                                                                                                                                           |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 39  | Almacenamiento de secretos por workspace (SQLite + valores cifrados + CRUD + ofuscado en portal)                                         | ⏳ Pendiente | Actualmente se implemento un enfoque alterno basado en `Set Variables` tipo `secret` + clave maestra `W_METADATA_1` (sin DB de secretos por workspace ni CRUD dedicado). Para cumplir este requerimiento literal falta la capa SQLite/CRUD por workspace solicitada en Fase 4. |
-| 40  | Nodo OpenAI Responses Create con parámetros mínimos (`base_url`, `api_key`, `model`, `message/input`, `instructions`, `temperature`)     | ✅ Completado | Backend: `app/nodes/openai_responses.py` + registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/OpenaiResponsesNode.jsx` + registro en `frontend/src/nodes/index.js`. `message` soporta `${VAR}` y `#{SECRET}` dentro del flujo.                          |
+| 39  | Nodo OpenAI Responses Create con parámetros mínimos (`base_url`, `api_key`, `model`, `message/input`, `instructions`, `temperature`)     | ✅ Completado | Backend: `app/nodes/openai_responses.py` + registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/OpenaiResponsesNode.jsx` + registro en `frontend/src/nodes/index.js`. `message` soporta `${VAR}` y `#{SECRET}` dentro del flujo.                          |
 
 ---
 
@@ -70,8 +69,8 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | -------------- | -------- |
 | ✅ Completado  | 39       |
 | 🔄 En progreso | 0        |
-| ⏳ Pendiente   | 1        |
+| ⏳ Pendiente   | 0        |
 
 ---
 
-_Última actualización: 2026-06-16_
+_Última actualización: 2026-06-17_
