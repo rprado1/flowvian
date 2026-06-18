@@ -54,3 +54,4 @@
   },
   {"role": "user", "content": "how can I solve 8x + 7 = -23"},
   ]), instructions, temperature
+- 3.- Requiero crear un nodo llamado calculator, con operaciones: suma, resta, multiplicacion, division, abs, max, min, floor, ceil, x2, solo se permite operaciones entre dos variables y una vairable, debe haber inputs para ingresar valores o variables (${} o #{}), debe haber un selector de operacion, debe haber un inout taex para definicir el nombre de la variable, debe permitirme agregar varios variables a caclular similar a set variable node
