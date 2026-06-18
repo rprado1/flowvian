@@ -30,6 +30,7 @@ const NODE_CATEGORIES = {
   split: 'Data',
   aggregate: 'Data',
   sort: 'Data',
+  calculator: 'Data',
 };
 
 function getCategory(type) {

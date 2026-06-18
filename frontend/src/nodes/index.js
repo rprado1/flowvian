@@ -15,6 +15,7 @@ import FormatDateNode,           { FormatDatePropsForm }           from './Forma
 import SortNode,                 { SortPropsForm }                 from './SortNode';
 import SwitchNode,               { SwitchPropsForm }               from './SwitchNode';
 import OpenaiResponsesNode,      { OpenaiResponsesPropsForm }      from './OpenaiResponsesNode';
+import CalculatorNode,           { CalculatorPropsForm }           from './CalculatorNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -35,6 +36,7 @@ export const nodeTypes = {
   sort:                    SortNode,
   switch:                  SwitchNode,
   openai_responses:        OpenaiResponsesNode,
+  calculator:              CalculatorNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -278,5 +280,17 @@ export const NODE_META = {
       include_other_input_fields: true,
     }),
     PropsForm: OpenaiResponsesPropsForm,
+  },
+  calculator: {
+    label: 'Calculator',
+    icon:  '🧮',
+    description: 'Math operations with one or two operands',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      calculations: [],
+      include_other_input_fields: true,
+    }),
+    PropsForm: CalculatorPropsForm,
   },
 };
