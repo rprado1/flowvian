@@ -1,4 +1,5 @@
 from flask import Blueprint, request, jsonify, current_app
+from typing import Any
 from app.db.manager import (
     list_workflows,
     get_workflow_meta,
@@ -8,12 +9,75 @@ from app.db.manager import (
     get_workflow_graph,
     save_workflow_graph,
 )
+from app.security.secrets_crypto import (
+    SECRET_MASK,
+    encrypt_secret_value,
+    is_encrypted_secret_value,
+    mask_secret_in_config,
+)
 
 workflows_bp = Blueprint("workflows", __name__)
 
 
 def data_dir():
     return current_app.config["DATA_DIR"]
+
+
+def _normalize_type(value) -> str:
+    return str(value or "string").strip().lower() or "string"
+
+
+def _encrypt_secrets_in_nodes(nodes: list[dict]) -> list[dict]:
+    next_nodes = []
+    for node in nodes:
+        node_type = str(node.get("type") or "")
+        raw_config = node.get("config")
+        config: dict[str, Any] = raw_config if isinstance(raw_config, dict) else {}
+        if node_type != "set_variables":
+            next_nodes.append({**node, "config": config})
+            continue
+
+        variables = config.get("variables", [])
+        if not isinstance(variables, list):
+            next_nodes.append({**node, "config": config})
+            continue
+
+        next_variables = []
+        for item in variables:
+            if not isinstance(item, dict):
+                next_variables.append(item)
+                continue
+
+            next_item = dict(item)
+            if _normalize_type(next_item.get("type")) != "secret":
+                next_variables.append(next_item)
+                continue
+
+            raw_value = next_item.get("value", "")
+            if isinstance(raw_value, str):
+                if raw_value == SECRET_MASK:
+                    pass
+                elif not is_encrypted_secret_value(raw_value):
+                    next_item["value"] = encrypt_secret_value(raw_value)
+            next_variables.append(next_item)
+
+        next_config: dict[str, Any] = dict(config)
+        next_config["variables"] = next_variables
+        next_nodes.append({**node, "config": next_config})
+
+    return next_nodes
+
+
+def _mask_secrets_in_nodes(nodes: list[dict]) -> list[dict]:
+    masked = []
+    for node in nodes:
+        node_type = str(node.get("type") or "")
+        raw_config = node.get("config")
+        config: dict[str, Any] = raw_config if isinstance(raw_config, dict) else {}
+        if node_type == "set_variables":
+            config = mask_secret_in_config(config)
+        masked.append({**node, "config": config})
+    return masked
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +106,7 @@ def get_one(workflow_id):
     if not meta:
         return jsonify({"error": "not found"}), 404
     graph = get_workflow_graph(data_dir(), workflow_id)
+    graph["nodes"] = _mask_secrets_in_nodes(graph.get("nodes", []))
     return jsonify({**meta, **graph})
 
 
@@ -75,7 +140,9 @@ def get_graph(workflow_id):
     meta = get_workflow_meta(data_dir(), workflow_id)
     if not meta:
         return jsonify({"error": "not found"}), 404
-    return jsonify(get_workflow_graph(data_dir(), workflow_id))
+    graph = get_workflow_graph(data_dir(), workflow_id)
+    graph["nodes"] = _mask_secrets_in_nodes(graph.get("nodes", []))
+    return jsonify(graph)
 
 
 @workflows_bp.route("/<workflow_id>/graph", methods=["POST"])
@@ -96,5 +163,68 @@ def save_graph(workflow_id):
         if not edge.get("id") or not edge.get("source_node_id") or not edge.get("target_node_id"):
             return jsonify({"error": "each edge must have id, source_node_id and target_node_id"}), 400
 
-    save_workflow_graph(data_dir(), workflow_id, nodes, edges)
+    current_graph = get_workflow_graph(data_dir(), workflow_id)
+    existing_nodes = current_graph.get("nodes", [])
+    existing_by_id = {str(n.get("id")): n for n in existing_nodes}
+
+    prepared_nodes = []
+    for node in nodes:
+        node_type = str(node.get("type") or "")
+        if node_type != "set_variables":
+            prepared_nodes.append(node)
+            continue
+
+        config: dict[str, Any] = node.get("config") if isinstance(node.get("config"), dict) else {}
+        variables = config.get("variables", [])
+        if not isinstance(variables, list):
+            prepared_nodes.append({**node, "config": config})
+            continue
+
+        previous = existing_by_id.get(str(node.get("id")), {})
+        prev_config = previous.get("config") if isinstance(previous.get("config"), dict) else {}
+        prev_variables = prev_config.get("variables", []) if isinstance(prev_config.get("variables"), list) else []
+        prev_secret_map: dict[str, str] = {}
+        for item in prev_variables:
+            if not isinstance(item, dict):
+                continue
+            if _normalize_type(item.get("type")) != "secret":
+                continue
+            key = str(item.get("key") or "").strip()
+            value = item.get("value", "")
+            if key and isinstance(value, str) and value:
+                prev_secret_map[key] = value
+
+        next_variables = []
+        for idx, item in enumerate(variables):
+            if not isinstance(item, dict):
+                next_variables.append(item)
+                continue
+            next_item = dict(item)
+            if _normalize_type(next_item.get("type")) != "secret":
+                next_variables.append(next_item)
+                continue
+
+            key = str(next_item.get("key") or "").strip()
+            value = next_item.get("value", "")
+            if value == SECRET_MASK:
+                if key in prev_secret_map:
+                    next_item["value"] = prev_secret_map[key]
+                elif idx < len(prev_variables):
+                    prev_item = prev_variables[idx]
+                    if isinstance(prev_item, dict) and _normalize_type(prev_item.get("type")) == "secret":
+                        prev_value = prev_item.get("value", "")
+                        if isinstance(prev_value, str) and prev_value:
+                            next_item["value"] = prev_value
+            next_variables.append(next_item)
+
+        next_config: dict[str, Any] = dict(config)
+        next_config["variables"] = next_variables
+        prepared_nodes.append({**node, "config": next_config})
+
+    try:
+        encrypted_nodes = _encrypt_secrets_in_nodes(prepared_nodes)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 422
+
+    save_workflow_graph(data_dir(), workflow_id, encrypted_nodes, edges)
     return jsonify({"ok": True})

@@ -14,6 +14,7 @@ import AggregateNode,            { AggregatePropsForm }            from './Aggre
 import FormatDateNode,           { FormatDatePropsForm }           from './FormatDateNode';
 import SortNode,                 { SortPropsForm }                 from './SortNode';
 import SwitchNode,               { SwitchPropsForm }               from './SwitchNode';
+import OpenaiResponsesNode,      { OpenaiResponsesPropsForm }      from './OpenaiResponsesNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -33,6 +34,7 @@ export const nodeTypes = {
   format_date:             FormatDateNode,
   sort:                    SortNode,
   switch:                  SwitchNode,
+  openai_responses:        OpenaiResponsesNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -254,5 +256,27 @@ export const NODE_META = {
       discard_unmatched: true,
     }),
     PropsForm: SwitchPropsForm,
+  },
+  openai_responses: {
+    label: 'OpenAI Responses',
+    icon:  '🤖',
+    description: 'Call OpenAI Responses API',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      base_url: 'https://api.openai.com/v1',
+      api_key: '#{OPENAI_API_KEY}',
+      model: 'gpt-5-mini',
+      message: [
+        { role: 'system', content: 'You are a helpful assistant.' },
+        { role: 'user', content: 'Hello' },
+      ],
+      instructions: 'You are a helpful assistant.',
+      temperature: 0.7,
+      output_json_schema: '',
+      output_var: 'openai_response',
+      include_other_input_fields: true,
+    }),
+    PropsForm: OpenaiResponsesPropsForm,
   },
 };

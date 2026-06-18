@@ -44,3 +44,13 @@
 - 12.- Requiero implementar un nodo para formatear una fecha, debe haber un campo para declarar una variable dentro del flujo ${VARIABLE}, un selector de formatos de fechas entro ellos Unix Ms Timestamp y un campo para definir el nombre de la variable con la fecha con formato, debe tener tambien tener el campo Include Other Input Fields
 - 13.- Requiero tener un nodo Sort que me permita ordena la lista del flujo de forma asc o desc de acuerdo a un campo
 - 14.- Requier crear un nodo Switch, similar al nodo if, solo que para cada condicion se considera una ruta de salida, solo los items del flujo quen concida con la condición iran a la ruta
+
+# Fase 4
+
+- 2.- Requiero ahora implementar un nodo que me permite configurar https://developers.openai.com/api/reference/resources/responses/methods/create, los parametros debe ser los minimos para que finciones, los requeridos son base_url, api_key, model, message (Ejemplo input=[
+  {
+  "role": "system",
+  "content": "You are a helpful math tutor. Guide the user through the solution step by step.",
+  },
+  {"role": "user", "content": "how can I solve 8x + 7 = -23"},
+  ]), instructions, temperature
