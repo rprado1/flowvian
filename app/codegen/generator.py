@@ -31,6 +31,7 @@ from app.nodes.format_date import FormatDateNode
 from app.nodes.sort import SortNode
 from app.nodes.switch import SwitchNode
 from app.nodes.openai_responses import OpenaiResponsesNode
+from app.nodes.calculator import CalculatorNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -51,6 +52,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     SortNode.NODE_TYPE: SortNode,
     SwitchNode.NODE_TYPE: SwitchNode,
     OpenaiResponsesNode.NODE_TYPE: OpenaiResponsesNode,
+    CalculatorNode.NODE_TYPE: CalculatorNode,
 }
 
 SCRIPT_HEADER = '''\
@@ -68,6 +70,7 @@ import re
 import base64
 import hashlib
 import hmac
+import math
 import socket
 import ipaddress
 from datetime import datetime, timezone
@@ -840,6 +843,7 @@ import re
 import base64
 import hashlib
 import hmac
+import math
 import socket
 import ipaddress
 from datetime import datetime, timezone

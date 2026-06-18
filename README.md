@@ -260,6 +260,30 @@ Node output fields:
 - `http_method`
 - `http_url_resolved`
 
+### 🧮 Calculator
+
+Runs one or multiple math calculations per item and stores each result in a named output variable.
+
+Supported operations:
+
+- `sum`
+- `subtract`
+- `multiply`
+- `divide`
+- `abs`
+- `max`
+- `min`
+- `floor`
+- `ceil`
+- `x2`
+
+Rules:
+
+- Binary operations (`sum`, `subtract`, `multiply`, `divide`, `max`, `min`) use two operands.
+- Unary operations (`abs`, `floor`, `ceil`, `x2`) use one operand.
+- Operands accept numeric literals, `${VAR}`, and `#{SECRET}`.
+- Each calculation writes to its `output_key` in the item output.
+
 ### 🤖 OpenAI Responses
 
 Calls OpenAI `POST /responses` for each item in the flow.
