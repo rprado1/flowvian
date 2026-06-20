@@ -1,51 +1,53 @@
-import SchedulerNode,           { SchedulerPropsForm }           from './SchedulerNode';
-import SetVariablesNode,         { SetVariablesPropsForm }         from './SetVariablesNode';
-import GetCurrentDateNode,       { GetCurrentDatePropsForm }       from './GetCurrentDateNode';
-import AddTimeToDateNode,        { AddTimeToDatePropsForm }        from './AddTimeToDateNode';
+import SchedulerNode, { SchedulerPropsForm } from './SchedulerNode';
+import SetVariablesNode, { SetVariablesPropsForm } from './SetVariablesNode';
+import GetCurrentDateNode, { GetCurrentDatePropsForm } from './GetCurrentDateNode';
+import AddTimeToDateNode, { AddTimeToDatePropsForm } from './AddTimeToDateNode';
 import SubtractTimeFromDateNode, { SubtractTimeFromDatePropsForm } from './SubtractTimeFromDateNode';
-import MergeNode,                { MergePropsForm }                from './MergeNode';
-import WaitNode,                 { WaitPropsForm }                 from './WaitNode';
-import HttpRequestNode,          { HttpRequestPropsForm }          from './HttpRequestNode';
-import IfNode,                   { IfPropsForm }                   from './IfNode';
-import FilterNode,               { FilterPropsForm }               from './FilterNode';
-import StopAndErrorNode,         { StopAndErrorPropsForm }         from './StopAndErrorNode';
-import SplitNode,                { SplitPropsForm }                from './SplitNode';
-import AggregateNode,            { AggregatePropsForm }            from './AggregateNode';
-import FormatDateNode,           { FormatDatePropsForm }           from './FormatDateNode';
-import SortNode,                 { SortPropsForm }                 from './SortNode';
-import SwitchNode,               { SwitchPropsForm }               from './SwitchNode';
-import OpenaiResponsesNode,      { OpenaiResponsesPropsForm }      from './OpenaiResponsesNode';
-import CalculatorNode,           { CalculatorPropsForm }           from './CalculatorNode';
-import WebhookNode,              { WebhookPropsForm }              from './WebhookNode';
+import MergeNode, { MergePropsForm } from './MergeNode';
+import WaitNode, { WaitPropsForm } from './WaitNode';
+import HttpRequestNode, { HttpRequestPropsForm } from './HttpRequestNode';
+import IfNode, { IfPropsForm } from './IfNode';
+import FilterNode, { FilterPropsForm } from './FilterNode';
+import StopAndErrorNode, { StopAndErrorPropsForm } from './StopAndErrorNode';
+import SplitNode, { SplitPropsForm } from './SplitNode';
+import AggregateNode, { AggregatePropsForm } from './AggregateNode';
+import FormatDateNode, { FormatDatePropsForm } from './FormatDateNode';
+import SortNode, { SortPropsForm } from './SortNode';
+import SwitchNode, { SwitchPropsForm } from './SwitchNode';
+import OpenaiResponsesNode, { OpenaiResponsesPropsForm } from './OpenaiResponsesNode';
+import CalculatorNode, { CalculatorPropsForm } from './CalculatorNode';
+import WebhookNode, { WebhookPropsForm } from './WebhookNode';
+import TelegramSendMessageNode, { TelegramSendMessagePropsForm } from './TelegramSendMessageNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
-  scheduler:               SchedulerNode,
-  set_variables:           SetVariablesNode,
-  get_current_date_utc:    GetCurrentDateNode,
-  add_time_to_date:        AddTimeToDateNode,
+  scheduler: SchedulerNode,
+  set_variables: SetVariablesNode,
+  get_current_date_utc: GetCurrentDateNode,
+  add_time_to_date: AddTimeToDateNode,
   subtract_time_from_date: SubtractTimeFromDateNode,
-  merge:                   MergeNode,
-  wait:                    WaitNode,
-  http_request:            HttpRequestNode,
-  if:                      IfNode,
-  filter:                  FilterNode,
-  stop_and_error:          StopAndErrorNode,
-  split:                   SplitNode,
-  aggregate:               AggregateNode,
-  format_date:             FormatDateNode,
-  sort:                    SortNode,
-  switch:                  SwitchNode,
-  openai_responses:        OpenaiResponsesNode,
-  calculator:              CalculatorNode,
-  webhook:                 WebhookNode,
+  merge: MergeNode,
+  wait: WaitNode,
+  http_request: HttpRequestNode,
+  if: IfNode,
+  filter: FilterNode,
+  stop_and_error: StopAndErrorNode,
+  split: SplitNode,
+  aggregate: AggregateNode,
+  format_date: FormatDateNode,
+  sort: SortNode,
+  switch: SwitchNode,
+  openai_responses: OpenaiResponsesNode,
+  calculator: CalculatorNode,
+  webhook: WebhookNode,
+  telegram_send_message: TelegramSendMessageNode
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
 export const NODE_META = {
   scheduler: {
     label: 'Scheduler',
-    icon:  '⏱',
+    icon: '⏱',
     description: 'Time interval trigger',
     inputs: 0,
     outputs: 1,
@@ -54,7 +56,7 @@ export const NODE_META = {
   },
   set_variables: {
     label: 'Set Variables',
-    icon:  '📦',
+    icon: '📦',
     description: 'Assign key=value pairs',
     inputs: 1,
     outputs: 1,
@@ -63,7 +65,7 @@ export const NODE_META = {
   },
   get_current_date_utc: {
     label: 'Get Current Date UTC',
-    icon:  '📅',
+    icon: '📅',
     description: 'datetime.now(UTC)',
     inputs: 1,
     outputs: 1,
@@ -72,7 +74,7 @@ export const NODE_META = {
   },
   add_time_to_date: {
     label: 'Add Time to Date',
-    icon:  '⏩',
+    icon: '⏩',
     description: 'date + timedelta',
     inputs: 1,
     outputs: 1,
@@ -81,7 +83,7 @@ export const NODE_META = {
   },
   subtract_time_from_date: {
     label: 'Subtract Time from Date',
-    icon:  '⏪',
+    icon: '⏪',
     description: 'date - timedelta',
     inputs: 1,
     outputs: 1,
@@ -90,7 +92,7 @@ export const NODE_META = {
   },
   merge: {
     label: 'Merge',
-    icon:  '⬡',
+    icon: '⬡',
     description: 'Append inbound items',
     inputs: 2,
     outputs: 1,
@@ -99,7 +101,7 @@ export const NODE_META = {
   },
   wait: {
     label: 'Wait',
-    icon:  '⏳',
+    icon: '⏳',
     description: 'Pause for N seconds',
     inputs: 1,
     outputs: 1,
@@ -108,7 +110,7 @@ export const NODE_META = {
   },
   http_request: {
     label: 'HTTP Request',
-    icon:  '🌐',
+    icon: '🌐',
     description: 'GET/POST with headers and JSON body',
     inputs: 1,
     outputs: 1,
@@ -126,7 +128,7 @@ export const NODE_META = {
   },
   if: {
     label: 'IF',
-    icon:  '🔀',
+    icon: '🔀',
     description: 'Branch by condition (true/false)',
     inputs: 1,
     outputs: 2,
@@ -149,7 +151,7 @@ export const NODE_META = {
   },
   filter: {
     label: 'Filter',
-    icon:  '🧹',
+    icon: '🧹',
     description: 'Keep only items matching conditions',
     inputs: 1,
     outputs: 1,
@@ -172,7 +174,7 @@ export const NODE_META = {
   },
   stop_and_error: {
     label: 'Stop and Error',
-    icon:  '⛔',
+    icon: '⛔',
     description: 'Stop current execution with custom message',
     inputs: 1,
     outputs: 0,
@@ -183,7 +185,7 @@ export const NODE_META = {
   },
   split: {
     label: 'Split',
-    icon:  '✂️',
+    icon: '✂️',
     description: 'Split array into multiple items',
     inputs: 1,
     outputs: 1,
@@ -195,7 +197,7 @@ export const NODE_META = {
   },
   aggregate: {
     label: 'Aggregate',
-    icon:  '🧺',
+    icon: '🧺',
     description: 'Collect all items into one list',
     inputs: 1,
     outputs: 1,
@@ -207,7 +209,7 @@ export const NODE_META = {
   },
   format_date: {
     label: 'Format Date',
-    icon:  '🗓️',
+    icon: '🗓️',
     description: 'Format a date to text/timestamp',
     inputs: 1,
     outputs: 1,
@@ -221,7 +223,7 @@ export const NODE_META = {
   },
   sort: {
     label: 'Sort',
-    icon:  '↕️',
+    icon: '↕️',
     description: 'Sort items by variable value',
     inputs: 1,
     outputs: 1,
@@ -233,7 +235,7 @@ export const NODE_META = {
   },
   switch: {
     label: 'Switch',
-    icon:  '🔀',
+    icon: '🔀',
     description: 'Route items by first matching condition',
     inputs: 1,
     outputs: 2,
@@ -264,7 +266,7 @@ export const NODE_META = {
   },
   openai_responses: {
     label: 'OpenAI Responses',
-    icon:  '🤖',
+    icon: '🤖',
     description: 'Call OpenAI Responses API',
     inputs: 1,
     outputs: 1,
@@ -286,7 +288,7 @@ export const NODE_META = {
   },
   calculator: {
     label: 'Calculator',
-    icon:  '🧮',
+    icon: '🧮',
     description: 'Math operations with one or two operands',
     inputs: 1,
     outputs: 1,
@@ -298,7 +300,7 @@ export const NODE_META = {
   },
   webhook: {
     label: 'Webhook',
-    icon:  '🪝',
+    icon: '🪝',
     description: 'Expose an HTTP webhook trigger',
     inputs: 0,
     outputs: 1,
@@ -313,5 +315,22 @@ export const NODE_META = {
       response_headers_var: 'webhook_headers',
     }),
     PropsForm: WebhookPropsForm,
+  },
+  telegram_send_message: {
+    label: 'Telegram Send Message',
+    icon: '✈️',
+    description: 'Send a text message to Telegram chat/channel',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      base_url: 'https://api.telegram.org',
+      access_token: '#{TELEGRAM_BOT_TOKEN}',
+      chat_id: '${TELEGRAM_CHAT_ID}',
+      message: 'Workflow finalizado para ${customer_name}',
+      disable_notification: false,
+      output_var: 'telegram_result',
+      include_other_input_fields: true,
+    }),
+    PropsForm: TelegramSendMessagePropsForm,
   },
 };

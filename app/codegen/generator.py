@@ -33,6 +33,7 @@ from app.nodes.switch import SwitchNode
 from app.nodes.openai_responses import OpenaiResponsesNode
 from app.nodes.calculator import CalculatorNode
 from app.nodes.webhook import WebhookNode
+from app.nodes.telegram_send_message import TelegramSendMessageNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -55,6 +56,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     OpenaiResponsesNode.NODE_TYPE: OpenaiResponsesNode,
     CalculatorNode.NODE_TYPE: CalculatorNode,
     WebhookNode.NODE_TYPE: WebhookNode,
+    TelegramSendMessageNode.NODE_TYPE: TelegramSendMessageNode
 }
 
 SCRIPT_HEADER = '''\
