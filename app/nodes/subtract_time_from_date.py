@@ -1,5 +1,6 @@
 from __future__ import annotations
-from typing import Optional
+import re
+
 from app.nodes.base import BaseNode
 
 VALID_UNITS = ("days", "hours", "minutes", "seconds")
@@ -20,6 +21,11 @@ class SubtractTimeFromDateNode(BaseNode):
     """
 
     NODE_TYPE = "subtract_time_from_date"
+    _PLACEHOLDER_RE = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
+
+    @classmethod
+    def _is_dynamic_value(cls, raw_value) -> bool:
+        return isinstance(raw_value, str) and cls._PLACEHOLDER_RE.search(raw_value) is not None
 
     def validate(self) -> list[str]:
         errors: list[str] = []
@@ -40,13 +46,33 @@ class SubtractTimeFromDateNode(BaseNode):
                 f"subtract_time_from_date: output_var '{output_var}' is not a valid Python identifier"
             )
 
-        for field in ("days", "hours", "minutes", "seconds"):
+        for field in VALID_UNITS:
             raw = self.config.get(field, 0)
+
+            if isinstance(raw, bool):
+                errors.append(
+                    f"subtract_time_from_date: '{field}' must be a number or variable template, got boolean"
+                )
+                continue
+
+            if isinstance(raw, (int, float)):
+                continue
+
+            text = str(raw).strip()
+            if not text:
+                errors.append(
+                    f"subtract_time_from_date: '{field}' cannot be empty"
+                )
+                continue
+
+            if self._is_dynamic_value(text):
+                continue
+
             try:
-                float(raw)
+                float(text)
             except (TypeError, ValueError):
                 errors.append(
-                    f"subtract_time_from_date: '{field}' must be a number, got '{raw}'"
+                    f"subtract_time_from_date: '{field}' must be a number or variable template, got '{raw}'"
                 )
 
         # Accept include_other_input_fields (default False)
@@ -56,30 +82,40 @@ class SubtractTimeFromDateNode(BaseNode):
         input_var = self.config.get("input_var", "").strip()
         output_var = self.config.get("output_var", "new_date").strip() or "new_date"
 
-        days = float(self.config.get("days", 0) or 0)
-        hours = float(self.config.get("hours", 0) or 0)
-        minutes = float(self.config.get("minutes", 0) or 0)
-        seconds = float(self.config.get("seconds", 0) or 0)
-
-        # Build timedelta args string — only include non-zero fields for clarity
-        args = []
-        if days:
-            args.append(f"days={days!r}")
-        if hours:
-            args.append(f"hours={hours!r}")
-        if minutes:
-            args.append(f"minutes={minutes!r}")
-        if seconds:
-            args.append(f"seconds={seconds!r}")
-
-        delta_args = ", ".join(args) if args else "seconds=0"
-
         lines = [
             "# Subtract Time from Date",
             f"_input_val = datetime.fromisoformat(_item[{repr(input_var)}])",
-            f"_out[{repr(output_var)}] = (_input_val - timedelta({delta_args})).isoformat()",
         ]
+
+        for field in VALID_UNITS:
+            field_var = f"_std_{field}"
+            raw_value = self.config.get(field, 0)
+            lines.extend(
+                [
+                    f"{field_var}_raw = {raw_value!r}",
+                    f"if isinstance({field_var}_raw, bool):",
+                    f"    raise ValueError(\"subtract_time_from_date: '{field}' must be numeric\")",
+                    f"if isinstance({field_var}_raw, (int, float)):",
+                    f"    {field_var} = float({field_var}_raw)",
+                    "else:",
+                    f"    {field_var}_txt = str({field_var}_raw).strip()",
+                    f"    if not {field_var}_txt:",
+                    f"        raise ValueError(\"subtract_time_from_date: '{field}' cannot be empty\")",
+                    f"    if _TPL_VAR_RE.search({field_var}_txt):",
+                    f"        {field_var}_txt = str(_resolve_template({field_var}_txt, _item)).strip()",
+                    "    try:",
+                    f"        {field_var} = float({field_var}_txt)",
+                    "    except Exception:",
+                    f"        raise ValueError(f\"subtract_time_from_date: '{field}' must resolve to a number, got {{{field_var}_txt!r}}\")",
+                    f"if not math.isfinite({field_var}):",
+                    f"    raise ValueError(\"subtract_time_from_date: '{field}' must be finite\")",
+                ]
+            )
+
+        lines.append(
+            f"_out[{repr(output_var)}] = (_input_val - timedelta(days=_std_days, hours=_std_hours, minutes=_std_minutes, seconds=_std_seconds)).isoformat()"
+        )
         code_body = "\n".join(lines)
-        
+
         include_flag = self.config.get("include_other_input_fields", False)
         return self._emit_item_loop(code_body, indent, include_flag)

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
@@ -82,6 +83,42 @@ function fmtIfEvaluations(debug) {
 }
 
 export default function RunPanel({ traces, output, finalOutput, onClose }) {
+  const [copiedKey, setCopiedKey] = useState('');
+
+  const setCopiedFeedback = (key) => {
+    setCopiedKey(key);
+    window.setTimeout(() => {
+      setCopiedKey((prev) => (prev === key ? '' : prev));
+    }, 1500);
+  };
+
+  const copyToClipboard = async (text, key) => {
+    const value = String(text ?? '');
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        setCopiedFeedback(key);
+        return;
+      }
+    } catch (error) {
+      void error;
+    }
+
+    const area = document.createElement('textarea');
+    area.value = value;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand('copy');
+    document.body.removeChild(area);
+    setCopiedFeedback(key);
+  };
+
+  const outputAsText = typeof output === 'string' ? output : JSON.stringify(output ?? null, null, 2);
+  const finalOutputAsText = JSON.stringify(finalOutput ?? null, null, 2);
+
   const renderFinalOutput = (finalOutput) => {
     if (finalOutput && finalOutput.status === 'stopped_current_execution') {
       return (
@@ -109,7 +146,18 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
 
     return (
       <div className="mx-4 mt-2 rounded-md border border-border p-2">
-        <div className="text-xs font-semibold mb-2">Final Output (by terminal branch)</div>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div className="text-xs font-semibold">Final Output (by terminal branch)</div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-6 px-2 text-[11px]"
+            onClick={() => copyToClipboard(finalOutputAsText, 'final-output')}
+          >
+            {copiedKey === 'final-output' ? 'Copied' : 'Copy JSON'}
+          </Button>
+        </div>
         {entries.map(([branchId, items]) => (
           <div key={branchId} className="mb-2 last:mb-0">
             <div className="text-xs text-muted-foreground mb-1">
@@ -134,7 +182,20 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
 
       <ScrollArea className="flex-1">
         {output && (
-          <pre className="build-log-pre mx-4 mt-2 text-xs" style={{ maxHeight: 80 }}>{output}</pre>
+          <div className="mx-4 mt-2">
+            <div className="mb-1 flex items-center justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-[11px]"
+                onClick={() => copyToClipboard(outputAsText, 'run-output')}
+              >
+                {copiedKey === 'run-output' ? 'Copied' : 'Copy JSON'}
+              </Button>
+            </div>
+            <pre className="build-log-pre text-xs" style={{ maxHeight: 80 }}>{outputAsText}</pre>
+          </div>
         )}
         {renderFinalOutput(finalOutput)}
         <Table>

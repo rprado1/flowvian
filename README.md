@@ -225,6 +225,7 @@ Combines multiple incoming branches explicitly using strategy `append`.
 | ------------------- | --------------------------------------------------------------- |
 | Strategy            | Fixed to `append`                                               |
 | Branches to combine | Number of incoming handles required (`branch_count`, minimum 2) |
+| Output property     | Variable name where appended items are stored (`output_var`)   |
 
 Notes:
 
@@ -259,6 +260,42 @@ Node output fields:
 - `http_error_message`
 - `http_method`
 - `http_url_resolved`
+
+### 🪝 Webhook
+
+Creates an HTTP endpoint that triggers the workflow when called.
+
+Supported modes:
+
+- `GET`
+- `POST`
+- `BOTH`
+
+Capabilities:
+
+- Configurable `host`, `port`, and `path`
+- Input parameter schema (`name`, `source`, `type`, `required`)
+- Input extraction from `query`, `body`, or `header`
+- Type coercion for `string`, `number`, `boolean`, `object`, and `array`
+- Response mapping from workflow variables:
+  - body variable
+  - status code variable
+  - headers variable
+
+Runtime notes:
+
+- Webhook node is an **entry trigger** (`inputs: 0`) and cannot have incoming edges.
+- Only one Webhook node is allowed per workflow.
+- Webhook and Scheduler cannot be used together in the same workflow.
+- `POST /api/workflows/{id}/run` does not execute webhook listeners; use Build/Preview and call the generated endpoint.
+
+Portal Run behavior for webhook workflows:
+
+- `POST /api/workflows/{id}/run` now starts a one-shot webhook listener in debug mode.
+- The run waits for a single incoming request (default: 90 seconds), processes it, returns HTTP response, then exits.
+- Node traces and final output are returned in the Run panel for debugging.
+- While Run is waiting/listening, the top bar `Run` button changes to `Stop` and sends `POST /api/workflows/{id}/run/stop`.
+- The portal can poll `GET /api/workflows/{id}/run/state` to show `waiting_webhook`, `executing_workflow`, `stopped`, or `done` phases during debug runs.
 
 ### 🧮 Calculator
 

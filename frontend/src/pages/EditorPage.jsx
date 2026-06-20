@@ -26,6 +26,7 @@ export default function EditorPage() {
   const [runFinalOutput, setRunFinalOutput] = useState(null);
   const [showRun, setShowRun] = useState(false);
   const [buildLog, setBuildLog] = useState(null);
+  const [runStateMsg, setRunStateMsg] = useState('');
 
   useEffect(() => {
     let mounted = true;
@@ -79,7 +80,33 @@ export default function EditorPage() {
     if (!workflowId) return toast.error('Open a workspace first');
     await saveGraph(nodes, edges);
     setRunning(true);
+    setRunStateMsg('Starting run...');
     toast.info('Executing workflow…');
+
+    const pollState = async () => {
+      try {
+        const st = await api('GET', `/api/workflows/${workflowId}/run/state`);
+        if (st?.status === 'running') {
+          if (st.phase === 'waiting_webhook') {
+            const method = st.method || 'POST';
+            const host = st.host || '127.0.0.1';
+            const port = st.port || '';
+            const path = st.path || '/webhook';
+            setRunStateMsg(`Waiting webhook: ${method} http://${host}${port ? `:${port}` : ''}${path}`);
+          } else if (st.phase === 'executing_workflow') {
+            setRunStateMsg('Webhook received, executing workflow...');
+          } else {
+            setRunStateMsg('Running...');
+          }
+        }
+      } catch {
+        // ignore state polling errors
+      }
+    };
+
+    const stateTimer = window.setInterval(pollState, 1000);
+    void pollState();
+
     try {
       const data = await api('POST', `/api/workflows/${workflowId}/run`);
       setRunTraces(data.traces || []);
@@ -91,7 +118,20 @@ export default function EditorPage() {
     } catch (e) {
       toast.error(e.message);
     } finally {
+      window.clearInterval(stateTimer);
       setRunning(false);
+      setRunStateMsg('');
+    }
+  };
+
+  const handleStopRun = async () => {
+    if (!workflowId) return;
+    try {
+      const data = await api('POST', `/api/workflows/${workflowId}/run/stop`);
+      toast.info(data?.message || 'Stop requested');
+      setRunStateMsg('Stopping run...');
+    } catch (e) {
+      toast.error(e.message);
     }
   };
 
@@ -127,8 +167,10 @@ export default function EditorPage() {
         onPreview={handlePreview}
         onSave={handleSave}
         onRun={handleRun}
+        onStopRun={handleStopRun}
         onBuild={handleBuild}
         running={running}
+        runStateMsg={runStateMsg}
         building={building}
       />
 
