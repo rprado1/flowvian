@@ -1,7 +1,15 @@
 import json
+import re
 from urllib.parse import urlparse
 
 from app.nodes.base import BaseNode
+
+
+_URL_TEMPLATE_PREFIX_RE = re.compile(r"^(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|#\{[A-Za-z_][A-Za-z0-9_]*\})")
+
+
+def _starts_with_url_template(value: str) -> bool:
+    return _URL_TEMPLATE_PREFIX_RE.match(value) is not None
 
 
 class HttpRequestNode(BaseNode):
@@ -17,8 +25,14 @@ class HttpRequestNode(BaseNode):
         url = str(self.config.get("url", "")).strip()
         if not url:
             errors.append("http_request: url cannot be empty")
-        elif not (url.startswith("http://") or url.startswith("https://")):
-            errors.append("http_request: url must start with http:// or https://")
+        elif not (
+            url.startswith("http://")
+            or url.startswith("https://")
+            or _starts_with_url_template(url)
+        ):
+            errors.append(
+                "http_request: url must start with http:// or https://, or with a template like ${VAR} / #{SECRET}"
+            )
 
         query_params = self.config.get("query_params", [])
         if not isinstance(query_params, list):
@@ -39,6 +53,12 @@ class HttpRequestNode(BaseNode):
                 errors.append("http_request: timeout_seconds must be between 1 and 120")
         except (TypeError, ValueError):
             errors.append("http_request: timeout_seconds must be a number")
+
+        output_var = str(self.config.get("output_var", "http_result")).strip()
+        if not output_var:
+            errors.append("http_request: output_var cannot be empty")
+        elif not output_var.isidentifier():
+            errors.append(f"http_request: output_var '{output_var}' is not a valid Python identifier")
 
         headers = self.config.get("headers", [])
         if isinstance(headers, dict):
@@ -83,6 +103,7 @@ class HttpRequestNode(BaseNode):
         body_raw_json = str(self.config.get("body_raw_json", "")).strip()
         query_params_config = self.config.get("query_params", [])
         headers_config = self.config.get("headers", [])
+        output_var = str(self.config.get("output_var", "http_result")).strip() or "http_result"
 
         if isinstance(query_params_config, list):
             normalized_query_params = []
@@ -124,12 +145,14 @@ class HttpRequestNode(BaseNode):
             f"_http_timeout_seconds = {timeout_seconds!r}",
             f"_http_body_raw_json = {body_raw_json!r}",
             f"_http_query_params_template = {normalized_query_params!r}",
+            f"_http_output_var = {output_var!r}",
             "_out['http_method'] = _http_method",
             "_out['http_ok'] = False",
             "_out['http_status_code'] = None",
             "_out['http_response_headers'] = {}",
             "_out['http_response_body'] = None",
             "_out['http_error_message'] = None",
+            "_out[_http_output_var] = {'ok': False, 'status_code': None, 'response_headers': {}, 'response_body': None, 'error_message': None, 'url_resolved': None}",
             "try:",
             "    _resolved_url = _resolve_template(_http_url_template, _item)",
             "    if _http_method == 'GET' and _http_query_params_template:",
@@ -173,6 +196,14 @@ class HttpRequestNode(BaseNode):
             "    _out['http_response_headers'] = _result['response_headers']",
             "    _out['http_response_body'] = _result['response_body']",
             "    _out['http_error_message'] = _result['error_message']",
+            "    _out[_http_output_var] = {",
+            "        'ok': _result['ok'],",
+            "        'status_code': _result['status_code'],",
+            "        'response_headers': _result['response_headers'],",
+            "        'response_body': _result['response_body'],",
+            "        'error_message': _result['error_message'],",
+            "        'url_resolved': _resolved_url,",
+            "    }",
             "except Exception as _http_ex:",
             "    _out['http_url_resolved'] = None",
             "    _out['http_ok'] = False",
@@ -180,6 +211,7 @@ class HttpRequestNode(BaseNode):
             "    _out['http_response_headers'] = {}",
             "    _out['http_response_body'] = None",
             "    _out['http_error_message'] = str(_http_ex)",
+            "    _out[_http_output_var] = {'ok': False, 'status_code': None, 'response_headers': {}, 'response_body': None, 'error_message': str(_http_ex), 'url_resolved': None}",
         ]
 
         include_flag = self.config.get("include_other_input_fields", False)

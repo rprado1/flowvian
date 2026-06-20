@@ -112,7 +112,7 @@ export default function WorkspacesPage() {
                     <TableCell className="text-muted-foreground">{wf.description || '—'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Button size="sm" onClick={() => navigate(`/editor/${wf.id}`)}>Open</Button>
+                        <Button size="sm" className="bg-sky-600 text-white hover:bg-sky-700" onClick={() => navigate(`/editor/${wf.id}`)}>Open</Button>
                         <Button variant="outline" size="sm" onClick={() => openRename(wf)}>Rename</Button>
                         <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(wf)}>Delete</Button>
                       </div>

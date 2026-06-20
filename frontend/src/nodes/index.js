@@ -113,6 +113,7 @@ export const NODE_META = {
     defaultConfig: () => ({
       method: 'GET',
       url: 'https://api.example.com',
+      output_var: 'http_result',
       query_params: [],
       headers: [],
       body_raw_json: '{\n  "key": "${VALUE}"\n}',

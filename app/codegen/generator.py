@@ -71,8 +71,6 @@ import base64
 import hashlib
 import hmac
 import math
-import socket
-import ipaddress
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_COMPLETED as _ALL
 from urllib.parse import urlparse
@@ -259,21 +257,6 @@ def _validate_target_url(_url):
         raise ValueError("Only http/https URLs are allowed")
     if not _parsed.hostname:
         raise ValueError("URL hostname is required")
-
-    _host = _parsed.hostname
-    try:
-        _infos = socket.getaddrinfo(_host, _parsed.port or (_parsed.scheme == "https" and 443 or 80))
-    except Exception as _dns_ex:
-        raise ValueError(f"Unable to resolve host '{_host}': {_dns_ex}")
-
-    for _info in _infos:
-        _ip_txt = _info[4][0]
-        try:
-            _ip = ipaddress.ip_address(_ip_txt)
-        except ValueError:
-            continue
-        if _ip.is_private or _ip.is_loopback or _ip.is_link_local or _ip.is_multicast or _ip.is_unspecified:
-            raise ValueError(f"Blocked target address: {_ip}")
 
 def _decode_http_body(_raw):
     if _raw is None:
@@ -844,8 +827,6 @@ import base64
 import hashlib
 import hmac
 import math
-import socket
-import ipaddress
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_COMPLETED as _ALL
 from urllib.parse import urlparse
@@ -1025,21 +1006,6 @@ def _validate_target_url(_url):
         raise ValueError("Only http/https URLs are allowed")
     if not _parsed.hostname:
         raise ValueError("URL hostname is required")
-
-    _host = _parsed.hostname
-    try:
-        _infos = socket.getaddrinfo(_host, _parsed.port or (_parsed.scheme == "https" and 443 or 80))
-    except Exception as _dns_ex:
-        raise ValueError(f"Unable to resolve host '{_host}': {_dns_ex}")
-
-    for _info in _infos:
-        _ip_txt = _info[4][0]
-        try:
-            _ip = ipaddress.ip_address(_ip_txt)
-        except ValueError:
-            continue
-        if _ip.is_private or _ip.is_loopback or _ip.is_link_local or _ip.is_multicast or _ip.is_unspecified:
-            raise ValueError(f"Blocked target address: {_ip}")
 
 def _decode_http_body(_raw):
     if _raw is None:
