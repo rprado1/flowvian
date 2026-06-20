@@ -30,6 +30,8 @@ const NODE_CATEGORIES = {
   split: 'Data',
   aggregate: 'Data',
   sort: 'Data',
+  calculator: 'Data',
+  telegram_send_message: 'Network',
 };
 
 function getCategory(type) {

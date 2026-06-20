@@ -260,6 +260,30 @@ Node output fields:
 - `http_method`
 - `http_url_resolved`
 
+### 🧮 Calculator
+
+Runs one or multiple math calculations per item and stores each result in a named output variable.
+
+Supported operations:
+
+- `sum`
+- `subtract`
+- `multiply`
+- `divide`
+- `abs`
+- `max`
+- `min`
+- `floor`
+- `ceil`
+- `x2`
+
+Rules:
+
+- Binary operations (`sum`, `subtract`, `multiply`, `divide`, `max`, `min`) use two operands.
+- Unary operations (`abs`, `floor`, `ceil`, `x2`) use one operand.
+- Operands accept numeric literals, `${VAR}`, and `#{SECRET}`.
+- Each calculation writes to its `output_key` in the item output.
+
 ### 🤖 OpenAI Responses
 
 Calls OpenAI `POST /responses` for each item in the flow.
@@ -284,6 +308,35 @@ Notes:
   - `status_code`
   - `response`
   - `text`
+  - `error_message`
+
+### ✈️ Telegram Send Message
+
+Sends a message using Telegram Bot API `POST /bot{access_token}/sendMessage`.
+
+Required config:
+
+- `base_url` (default: `https://api.telegram.org`)
+- `access_token`
+- `chat_id` (recommended as flow variable `${TELEGRAM_CHAT_ID}`)
+- `message`
+
+Optional config:
+
+- `disable_notification`
+- `output_var` (default: `telegram_result`)
+
+Notes:
+
+- `access_token`, `chat_id`, and `message` support placeholders `${VAR}` and secrets `#{SECRET}`.
+- `chat_id` is treated as workflow data (not environment variable).
+- Output is stored in `output_var` with:
+  - `ok`
+  - `status_code`
+  - `telegram_ok`
+  - `message_id`
+  - `chat_id`
+  - `response`
   - `error_message`
 
 ---
