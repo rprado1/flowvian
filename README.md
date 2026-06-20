@@ -289,6 +289,14 @@ Runtime notes:
 - Webhook and Scheduler cannot be used together in the same workflow.
 - `POST /api/workflows/{id}/run` does not execute webhook listeners; use Build/Preview and call the generated endpoint.
 
+Portal Run behavior for webhook workflows:
+
+- `POST /api/workflows/{id}/run` now starts a one-shot webhook listener in debug mode.
+- The run waits for a single incoming request (default: 90 seconds), processes it, returns HTTP response, then exits.
+- Node traces and final output are returned in the Run panel for debugging.
+- While Run is waiting/listening, the top bar `Run` button changes to `Stop` and sends `POST /api/workflows/{id}/run/stop`.
+- The portal can poll `GET /api/workflows/{id}/run/state` to show `waiting_webhook`, `executing_workflow`, `stopped`, or `done` phases during debug runs.
+
 ### 🧮 Calculator
 
 Runs one or multiple math calculations per item and stores each result in a named output variable.
