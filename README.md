@@ -310,6 +310,35 @@ Notes:
   - `text`
   - `error_message`
 
+### ✈️ Telegram Send Message
+
+Sends a message using Telegram Bot API `POST /bot{access_token}/sendMessage`.
+
+Required config:
+
+- `base_url` (default: `https://api.telegram.org`)
+- `access_token`
+- `chat_id` (recommended as flow variable `${TELEGRAM_CHAT_ID}`)
+- `message`
+
+Optional config:
+
+- `disable_notification`
+- `output_var` (default: `telegram_result`)
+
+Notes:
+
+- `access_token`, `chat_id`, and `message` support placeholders `${VAR}` and secrets `#{SECRET}`.
+- `chat_id` is treated as workflow data (not environment variable).
+- Output is stored in `output_var` with:
+  - `ok`
+  - `status_code`
+  - `telegram_ok`
+  - `message_id`
+  - `chat_id`
+  - `response`
+  - `error_message`
+
 ---
 
 ## Node naming
