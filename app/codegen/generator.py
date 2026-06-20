@@ -73,7 +73,7 @@ import hmac
 import math
 import socket
 import ipaddress
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_COMPLETED as _ALL
 from urllib.parse import urlparse
 from urllib.parse import urlencode as _urlencode
@@ -846,7 +846,7 @@ import hmac
 import math
 import socket
 import ipaddress
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_COMPLETED as _ALL
 from urllib.parse import urlparse
 from urllib.parse import urlencode as _urlencode

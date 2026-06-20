@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 export default function MergeNode({ id, data }) {
   const updateNodeInternals = useUpdateNodeInternals();
   const branchCount = Math.max(2, parseInt(data.config?.branch_count ?? 2, 10) || 2);
+  const outputVar = String(data.config?.output_var ?? 'merged_items').trim() || 'merged_items';
 
   useEffect(() => {
     updateNodeInternals(id);
@@ -35,6 +36,9 @@ export default function MergeNode({ id, data }) {
         <span className="text-xs text-muted-foreground">
           Append {branchCount} branches
         </span>
+        <span className="text-[11px] text-muted-foreground block mt-1">
+          Save as: {outputVar}
+        </span>
       </div>
       <Handle type="source" position={Position.Right} id="out" />
     </div>
@@ -43,6 +47,7 @@ export default function MergeNode({ id, data }) {
 
 export function MergePropsForm({ config, onChange }) {
   const branchCount = Math.max(2, parseInt(config.branch_count ?? 2, 10) || 2);
+  const outputVar = String(config.output_var ?? 'merged_items');
 
   return (
     <div className="space-y-3">
@@ -70,6 +75,19 @@ export function MergePropsForm({ config, onChange }) {
             onChange({ ...config, branch_count: next });
           }}
         />
+      </div>
+
+      <div className="prop-group">
+        <Label className="text-xs font-medium">Output property</Label>
+        <Input
+          type="text"
+          value={outputVar}
+          placeholder="merged_items"
+          onChange={e => onChange({ ...config, output_var: e.target.value })}
+        />
+        <p className="text-[11px] text-muted-foreground mt-1">
+          Property name where the appended items will be stored (letters, numbers and underscore).
+        </p>
       </div>
     </div>
   );

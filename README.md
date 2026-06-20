@@ -225,6 +225,7 @@ Combines multiple incoming branches explicitly using strategy `append`.
 | ------------------- | --------------------------------------------------------------- |
 | Strategy            | Fixed to `append`                                               |
 | Branches to combine | Number of incoming handles required (`branch_count`, minimum 2) |
+| Output property     | Variable name where appended items are stored (`output_var`)   |
 
 Notes:
 

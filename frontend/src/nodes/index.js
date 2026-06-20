@@ -92,7 +92,7 @@ export const NODE_META = {
     description: 'Append inbound items',
     inputs: 2,
     outputs: 1,
-    defaultConfig: () => ({ strategy: 'append', branch_count: 2 }),
+    defaultConfig: () => ({ strategy: 'append', branch_count: 2, output_var: 'merged_items' }),
     PropsForm: MergePropsForm,
   },
   wait: {
