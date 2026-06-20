@@ -16,6 +16,7 @@ import SortNode,                 { SortPropsForm }                 from './SortN
 import SwitchNode,               { SwitchPropsForm }               from './SwitchNode';
 import OpenaiResponsesNode,      { OpenaiResponsesPropsForm }      from './OpenaiResponsesNode';
 import CalculatorNode,           { CalculatorPropsForm }           from './CalculatorNode';
+import TelegramSendMessageNode,  { TelegramSendMessagePropsForm }  from './TelegramSendMessageNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -37,6 +38,7 @@ export const nodeTypes = {
   switch:                  SwitchNode,
   openai_responses:        OpenaiResponsesNode,
   calculator:              CalculatorNode,
+  telegram_send_message:   TelegramSendMessageNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -292,5 +294,22 @@ export const NODE_META = {
       include_other_input_fields: true,
     }),
     PropsForm: CalculatorPropsForm,
+  },
+  telegram_send_message: {
+    label: 'Telegram Send Message',
+    icon:  '✈️',
+    description: 'Send a text message to Telegram chat/channel',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      base_url: 'https://api.telegram.org',
+      access_token: '#{TELEGRAM_BOT_TOKEN}',
+      chat_id: '${TELEGRAM_CHAT_ID}',
+      message: 'Workflow finalizado para ${customer_name}',
+      disable_notification: false,
+      output_var: 'telegram_result',
+      include_other_input_fields: true,
+    }),
+    PropsForm: TelegramSendMessagePropsForm,
   },
 };

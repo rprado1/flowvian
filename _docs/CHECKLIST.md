@@ -60,6 +60,8 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | #   | Requerimiento                                                                                                                              | Estado       | Notas                                                                                                                                                                                                                                                                           |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 39  | Nodo OpenAI Responses Create con parámetros mínimos (`base_url`, `api_key`, `model`, `message/input`, `instructions`, `temperature`)     | ✅ Completado | Backend: `app/nodes/openai_responses.py` + registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/OpenaiResponsesNode.jsx` + registro en `frontend/src/nodes/index.js`. `message` soporta `${VAR}` y `#{SECRET}` dentro del flujo.                          |
+| 40  | Nodo Calculator con operaciones (`suma`, `resta`, `multiplicacion`, `division`, `abs`, `max`, `min`, `floor`, `ceil`, `x2`) y soporte `${}`/`#{}` | ✅ Completado | Backend: `app/nodes/calculator.py` (validación y ejecución de múltiples cálculos por nodo) + registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/CalculatorNode.jsx` + `NODE_META.calculator` en `frontend/src/nodes/index.js`.                        |
+| 41  | Nodo Telegram para enviar mensaje a canal/chat usando `TELEGRAM_CHAT_ID`, access token y `https://api.telegram.org`                      | ✅ Completado | Backend: `app/nodes/telegram_send_message.py` + registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/TelegramSendMessageNode.jsx` + `NODE_META.telegram_send_message` en `frontend/src/nodes/index.js`. Soporta `${VAR}` y `#{SECRET}` en campos clave. |
 
 ---
 
@@ -67,10 +69,10 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado         | Cantidad |
 | -------------- | -------- |
-| ✅ Completado  | 39       |
+| ✅ Completado  | 41       |
 | 🔄 En progreso | 0        |
 | ⏳ Pendiente   | 0        |
 
 ---
 
-_Última actualización: 2026-06-17_
+_Última actualización: 2026-06-19_
