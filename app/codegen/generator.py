@@ -568,6 +568,10 @@ def _serve_webhook(method, host, port, path, input_params, response_body_var, re
                     _result = {'result': _result}
 
                 _status = 200
+                if isinstance(_result, dict):
+                    _workflow_status = str(_result.get('status', '')).strip().lower()
+                    if _workflow_status == 'stopped_current_execution':
+                        _status = 422
                 _has_status, _status_candidate = _resolve_webhook_var(_result, response_status_var)
                 if _has_status:
                     if isinstance(_status_candidate, (int, float)):
