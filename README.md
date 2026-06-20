@@ -261,6 +261,34 @@ Node output fields:
 - `http_method`
 - `http_url_resolved`
 
+### 🪝 Webhook
+
+Creates an HTTP endpoint that triggers the workflow when called.
+
+Supported modes:
+
+- `GET`
+- `POST`
+- `BOTH`
+
+Capabilities:
+
+- Configurable `host`, `port`, and `path`
+- Input parameter schema (`name`, `source`, `type`, `required`)
+- Input extraction from `query`, `body`, or `header`
+- Type coercion for `string`, `number`, `boolean`, `object`, and `array`
+- Response mapping from workflow variables:
+  - body variable
+  - status code variable
+  - headers variable
+
+Runtime notes:
+
+- Webhook node is an **entry trigger** (`inputs: 0`) and cannot have incoming edges.
+- Only one Webhook node is allowed per workflow.
+- Webhook and Scheduler cannot be used together in the same workflow.
+- `POST /api/workflows/{id}/run` does not execute webhook listeners; use Build/Preview and call the generated endpoint.
+
 ### 🧮 Calculator
 
 Runs one or multiple math calculations per item and stores each result in a named output variable.

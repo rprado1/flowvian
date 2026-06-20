@@ -16,6 +16,7 @@ import SortNode,                 { SortPropsForm }                 from './SortN
 import SwitchNode,               { SwitchPropsForm }               from './SwitchNode';
 import OpenaiResponsesNode,      { OpenaiResponsesPropsForm }      from './OpenaiResponsesNode';
 import CalculatorNode,           { CalculatorPropsForm }           from './CalculatorNode';
+import WebhookNode,              { WebhookPropsForm }              from './WebhookNode';
 
 // React Flow nodeTypes map
 export const nodeTypes = {
@@ -37,6 +38,7 @@ export const nodeTypes = {
   switch:                  SwitchNode,
   openai_responses:        OpenaiResponsesNode,
   calculator:              CalculatorNode,
+  webhook:                 WebhookNode,
 };
 
 // Metadata: label, icon, i/o counts, default config, props form component
@@ -293,5 +295,23 @@ export const NODE_META = {
       include_other_input_fields: true,
     }),
     PropsForm: CalculatorPropsForm,
+  },
+  webhook: {
+    label: 'Webhook',
+    icon:  '🪝',
+    description: 'Expose an HTTP webhook trigger',
+    inputs: 0,
+    outputs: 1,
+    defaultConfig: () => ({
+      method: 'POST',
+      host: '0.0.0.0',
+      port: 8000,
+      path: '/webhook',
+      input_params: [],
+      response_body_var: 'webhook_response_body',
+      response_status_var: 'webhook_status_code',
+      response_headers_var: 'webhook_headers',
+    }),
+    PropsForm: WebhookPropsForm,
   },
 };

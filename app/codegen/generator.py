@@ -32,6 +32,7 @@ from app.nodes.sort import SortNode
 from app.nodes.switch import SwitchNode
 from app.nodes.openai_responses import OpenaiResponsesNode
 from app.nodes.calculator import CalculatorNode
+from app.nodes.webhook import WebhookNode
 
 
 NODE_REGISTRY: dict[str, type[BaseNode]] = {
@@ -53,6 +54,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     SwitchNode.NODE_TYPE: SwitchNode,
     OpenaiResponsesNode.NODE_TYPE: OpenaiResponsesNode,
     CalculatorNode.NODE_TYPE: CalculatorNode,
+    WebhookNode.NODE_TYPE: WebhookNode,
 }
 
 SCRIPT_HEADER = '''\
@@ -73,10 +75,11 @@ import hmac
 import math
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor as _TPE, wait as _wait, ALL_COMPLETED as _ALL
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 from urllib.parse import urlencode as _urlencode
 from urllib.request import Request as _UrlRequest, urlopen as _urlopen
 from urllib.error import HTTPError as _HTTPError, URLError as _URLError
+from http.server import BaseHTTPRequestHandler as _BaseHTTPRequestHandler, ThreadingHTTPServer as _ThreadingHTTPServer
 
 # ---- Error log setup ----
 # Log file is placed next to the .exe (or .py when running from source)
@@ -321,6 +324,250 @@ def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
         _result["error_message"] = f"Network error: {_url_ex.reason}"
 
     return _result
+
+def _coerce_webhook_value(_name, _raw_value, _declared_type):
+    _type = str(_declared_type or 'string').strip().lower() or 'string'
+
+    if _raw_value is None:
+        return None
+
+    if _type == 'string':
+        return str(_raw_value)
+
+    if _type == 'number':
+        if isinstance(_raw_value, bool):
+            raise ValueError(f"webhook param '{_name}' must be a number, got boolean")
+        if isinstance(_raw_value, (int, float)):
+            return _raw_value
+        _txt = str(_raw_value).strip()
+        if not _txt:
+            raise ValueError(f"webhook param '{_name}' must be a number")
+        if _txt.isdigit() or (_txt.startswith('-') and _txt[1:].isdigit()):
+            return int(_txt)
+        return float(_txt)
+
+    if _type == 'boolean':
+        if isinstance(_raw_value, bool):
+            return _raw_value
+        _txt = str(_raw_value).strip().lower()
+        if _txt in ('true', '1', 'yes', 'y', 'on'):
+            return True
+        if _txt in ('false', '0', 'no', 'n', 'off'):
+            return False
+        raise ValueError(f"webhook param '{_name}' must be boolean (true/false)")
+
+    if _type in ('object', 'array'):
+        _value = _raw_value
+        if isinstance(_value, str):
+            _txt = _value.strip()
+            if not _txt:
+                raise ValueError(f"webhook param '{_name}' must be valid JSON")
+            try:
+                _value = json.loads(_txt)
+            except Exception as _json_ex:
+                raise ValueError(f"webhook param '{_name}' must be valid JSON: {_json_ex}")
+
+        if _type == 'object' and not isinstance(_value, dict):
+            raise ValueError(f"webhook param '{_name}' must be a JSON object")
+        if _type == 'array' and not isinstance(_value, list):
+            raise ValueError(f"webhook param '{_name}' must be a JSON array")
+        return _value
+
+    raise ValueError(f"webhook param '{_name}' has unsupported type '{_type}'")
+
+def _extract_webhook_params(_method, _request_path, _headers, _body_obj, _input_params):
+    _parsed = urlparse(_request_path)
+    _query = parse_qs(_parsed.query, keep_blank_values=True)
+    _header_map = {str(_k).lower(): _v for _k, _v in (_headers or {}).items()}
+    _body = _body_obj if isinstance(_body_obj, dict) else {}
+
+    _params = {}
+    for _param in (_input_params or []):
+        if not isinstance(_param, dict):
+            continue
+        _name = str(_param.get('name', '')).strip()
+        if not _name:
+            continue
+        _source = str(_param.get('source', 'query')).strip().lower() or 'query'
+        _declared_type = str(_param.get('type', 'string')).strip().lower() or 'string'
+        _required = bool(_param.get('required', False))
+
+        _raw_value = None
+        if _source == 'query':
+            _values = _query.get(_name)
+            if _values:
+                _raw_value = _values[0]
+        elif _source == 'header':
+            _raw_value = _header_map.get(_name.lower())
+        elif _source == 'body':
+            _raw_value = _body.get(_name)
+        else:
+            raise ValueError(f"webhook param '{_name}' has unsupported source '{_source}'")
+
+        if _raw_value is None:
+            if _required:
+                raise ValueError(f"Missing required webhook param '{_name}' from {_source}")
+            continue
+
+        _params[_name] = _coerce_webhook_value(_name, _raw_value, _declared_type)
+
+    return _params
+
+def _iter_workflow_items(_workflow_output):
+    if not isinstance(_workflow_output, dict):
+        return []
+    _items = []
+    _branches = _workflow_output.get('branches')
+    if isinstance(_branches, dict):
+        for _branch_items in _branches.values():
+            if isinstance(_branch_items, list):
+                for _branch_item in _branch_items:
+                    if isinstance(_branch_item, dict):
+                        _items.append(_branch_item)
+    if not _items and isinstance(_workflow_output.get('legacy_items'), list):
+        for _legacy_item in _workflow_output.get('legacy_items'):
+            if isinstance(_legacy_item, dict):
+                _items.append(_legacy_item)
+    return _items
+
+def _resolve_webhook_var(_workflow_output, _var_name):
+    _name = str(_var_name or '').strip()
+    if not _name:
+        return False, None
+    if isinstance(_workflow_output, dict) and _name in _workflow_output:
+        return True, _workflow_output.get(_name)
+    for _item in _iter_workflow_items(_workflow_output):
+        if _name in _item:
+            return True, _item.get(_name)
+    return False, None
+
+def _serve_webhook(method, host, port, path, input_params, response_body_var, response_status_var, response_headers_var, workflow_handler):
+    _method = str(method or 'POST').strip().upper() or 'POST'
+    _allowed = {'GET', 'POST'} if _method == 'BOTH' else {_method}
+    _path = str(path or '/webhook').strip() or '/webhook'
+    if not _path.startswith('/'):
+        _path = '/' + _path
+
+    class _WebhookHandler(_BaseHTTPRequestHandler):
+        def _send_json(self, _status, _payload, _extra_headers=None):
+            _status_code = int(_status)
+            _body_json = json.dumps(_payload, default=str)
+            _body_bytes = _body_json.encode('utf-8')
+            self.send_response(_status_code)
+            self.send_header('Content-Type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', str(len(_body_bytes)))
+            for _k, _v in (_extra_headers or {}).items():
+                _key = str(_k)
+                if _key.lower() in ('content-length',):
+                    continue
+                self.send_header(_key, str(_v))
+            self.end_headers()
+            self.wfile.write(_body_bytes)
+
+        def _handle(self):
+            _req_method = str(self.command or '').upper()
+            if _req_method not in _allowed:
+                self._send_json(405, {'ok': False, 'error': f'Method {_req_method} not allowed'})
+                return
+
+            _parsed = urlparse(self.path)
+            if _parsed.path != _path:
+                self._send_json(404, {'ok': False, 'error': 'Webhook path not found'})
+                return
+
+            _content_length_raw = self.headers.get('Content-Length', '0')
+            try:
+                _content_length = int(_content_length_raw)
+            except Exception:
+                _content_length = 0
+            if _content_length < 0:
+                _content_length = 0
+            if _content_length > _MAX_REQUEST_BODY_BYTES:
+                self._send_json(413, {'ok': False, 'error': 'Request body too large'})
+                return
+
+            _raw_body = self.rfile.read(_content_length) if _content_length > 0 else b''
+            _decoded_body = _decode_http_body(_raw_body)
+            _headers_dict = dict(self.headers.items())
+
+            try:
+                _params = _extract_webhook_params(
+                    _req_method,
+                    self.path,
+                    _headers_dict,
+                    _decoded_body,
+                    input_params,
+                )
+
+                _request_payload = {
+                    'method': _req_method,
+                    'path': _parsed.path,
+                    'query': parse_qs(_parsed.query, keep_blank_values=True),
+                    'headers': _headers_dict,
+                    'body': _decoded_body,
+                    'params': _params,
+                }
+
+                _result = workflow_handler(_request_payload)
+                if not isinstance(_result, dict):
+                    _result = {'result': _result}
+
+                _status = 200
+                _has_status, _status_candidate = _resolve_webhook_var(_result, response_status_var)
+                if _has_status:
+                    if isinstance(_status_candidate, (int, float)):
+                        _status = int(_status_candidate)
+                    elif isinstance(_status_candidate, str) and _status_candidate.strip().isdigit():
+                        _status = int(_status_candidate.strip())
+                    if _status < 100 or _status > 599:
+                        raise ValueError(f"Invalid response status code: {_status}")
+
+                _extra_headers = {}
+                _has_headers, _candidate_headers = _resolve_webhook_var(_result, response_headers_var)
+                if _has_headers:
+                    if _candidate_headers is not None and not isinstance(_candidate_headers, dict):
+                        raise ValueError(f"{response_headers_var} must be an object with HTTP headers")
+                    for _k, _v in (_candidate_headers or {}).items():
+                        _extra_headers[str(_k)] = str(_v)
+
+                _has_body, _response_payload = _resolve_webhook_var(_result, response_body_var)
+                if _has_body:
+                    pass
+                else:
+                    _response_payload = {
+                        'ok': True,
+                        'workflow_output': _result,
+                    }
+
+                self._send_json(_status, _response_payload, _extra_headers)
+            except _StopIterationExecution as _stop_ex:
+                self._send_json(422, {
+                    'ok': False,
+                    'error': _stop_ex.message,
+                    'stop_node': {
+                        'id': _stop_ex.node_id,
+                        'type': _stop_ex.node_type,
+                    },
+                })
+            except Exception as _webhook_ex:
+                _logger.error("Webhook request failed:\\n%s", traceback.format_exc())
+                self._send_json(500, {'ok': False, 'error': str(_webhook_ex)})
+
+        def do_GET(self):
+            self._handle()
+
+        def do_POST(self):
+            self._handle()
+
+        def log_message(self, _format, *_args):
+            return
+
+    _server = _ThreadingHTTPServer((str(host), int(port)), _WebhookHandler)
+    print(f"Webhook listening on http://{host}:{port}{_path}")
+    try:
+        _server.serve_forever()
+    finally:
+        _server.server_close()
 '''
 
 WORKFLOW_MAIN_START = '''\
@@ -356,6 +603,35 @@ def _build_node(node_data: dict) -> BaseNode:
     if cls is None:
         raise ValueError(f"Unknown node type: '{node_type}'")
     return cls(node_id=node_data["id"], config=node_data.get("config", {}))
+
+
+def _collect_downstream_subgraph(
+    nodes: list[dict],
+    edges: list[dict],
+    start_node_id: str,
+) -> tuple[list[dict], list[dict]]:
+    adjacency: dict[str, list[str]] = defaultdict(list)
+    for edge in edges:
+        adjacency[str(edge["source_node_id"])].append(str(edge["target_node_id"]))
+
+    visited: set[str] = set()
+    queue: deque[str] = deque([str(start_node_id)])
+    while queue:
+        current = queue.popleft()
+        if current in visited:
+            continue
+        visited.add(current)
+        for nxt in adjacency.get(current, []):
+            if nxt not in visited:
+                queue.append(nxt)
+
+    sub_nodes = [n for n in nodes if str(n["id"]) in visited]
+    sub_edges = [
+        e
+        for e in edges
+        if str(e["source_node_id"]) in visited and str(e["target_node_id"]) in visited
+    ]
+    return sub_nodes, sub_edges
 
 
 def _topological_waves(nodes: list[dict], edges: list[dict]) -> list[list[dict]]:
@@ -665,6 +941,12 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
     if len(scheduler_nodes) > 1:
         errors.append("Only one Scheduler node is allowed per workflow")
 
+    webhook_nodes = [n for n in nodes if n["type"] == WebhookNode.NODE_TYPE]
+    if len(webhook_nodes) > 1:
+        errors.append("Only one Webhook node is allowed per workflow")
+    if webhook_nodes and scheduler_nodes:
+        errors.append("Webhook and Scheduler nodes cannot be used together")
+
     incoming_count: dict[str, int] = defaultdict(int)
     for edge in edges:
         incoming_count[edge["target_node_id"]] += 1
@@ -676,6 +958,10 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
                 f"[{node_data.get('label', node_id)}] "
                 f"Only 'merge' nodes can have multiple incoming edges "
                 f"(has {incoming_count[node_id]})"
+            )
+        if node_data["type"] == WebhookNode.NODE_TYPE and incoming_count[node_id] > 0:
+            errors.append(
+                f"[{node_data.get('label', node_id)}] Webhook node cannot have incoming edges"
             )
 
     for node_data in nodes:
@@ -724,7 +1010,14 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
     if errors:
         raise ValueError("Validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
 
-    waves = _topological_waves(nodes, edges)
+    webhook_nodes = [n for n in nodes if n["type"] == WebhookNode.NODE_TYPE]
+    if webhook_nodes:
+        webhook_node_id = str(webhook_nodes[0]["id"])
+        graph_nodes, graph_edges = _collect_downstream_subgraph(nodes, edges, webhook_node_id)
+    else:
+        graph_nodes, graph_edges = nodes, edges
+
+    waves = _topological_waves(graph_nodes, graph_edges)
 
     # WORKFLOW_NAME and WORKFLOW_ID must be defined before the logging setup in SCRIPT_HEADER
     lines: list[str] = [
@@ -743,16 +1036,64 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
     lines.append('    "executionDate": datetime.now(timezone.utc).isoformat()')
     lines.append("}]\n")
 
-    # Locate the wave that contains the Scheduler node (if any).
-    # The scheduler must be alone in its wave (it opens the while-True block).
+    # Locate special trigger nodes.
+    # Scheduler must be alone in its wave (it opens the while-True block).
     scheduler_wave_idx: Optional[int] = None
+    webhook_wave_idx: Optional[int] = None
     for w_idx, wave in enumerate(waves):
         for node_data in wave:
             if node_data["type"] == SchedulerNode.NODE_TYPE:
                 scheduler_wave_idx = w_idx
                 break
+            if node_data["type"] == WebhookNode.NODE_TYPE:
+                webhook_wave_idx = w_idx
+                break
         if scheduler_wave_idx is not None:
             break
+        if webhook_wave_idx is not None:
+            break
+
+    if webhook_wave_idx is not None:
+        webhook_wave = waves[webhook_wave_idx]
+        webhook_node_data = next(
+            nd for nd in webhook_wave if nd["type"] == WebhookNode.NODE_TYPE
+        )
+        webhook_node = cast(WebhookNode, _build_node(webhook_node_data))
+
+        webhook_post_waves = waves[webhook_wave_idx + 1:]
+
+        lines.append("def _execute_webhook_workflow(_webhook_request):")
+        lines.append("    global _items, _final_output, _secret_store")
+        lines.append("    EXECUTION_ID = str(uuid.uuid4())")
+        lines.append("    _secret_store = {}")
+        lines.append("    _items = [{")
+        lines.append('        "workflowId": WORKFLOW_ID,')
+        lines.append('        "executionId": EXECUTION_ID,')
+        lines.append('        "executionDate": datetime.now(timezone.utc).isoformat(),')
+        lines.append('        "webhook_request": _webhook_request,')
+        lines.append('        "webhook_method": _webhook_request.get("method"),')
+        lines.append('        "webhook_path": _webhook_request.get("path"),')
+        lines.append('        "webhook_query": _webhook_request.get("query"),')
+        lines.append('        "webhook_headers": _webhook_request.get("headers"),')
+        lines.append('        "webhook_body": _webhook_request.get("body"),')
+        lines.append('        "webhook_params": _webhook_request.get("params"),')
+        lines.append("    }]")
+        lines.append("    _final_output = {}")
+        lines.append("")
+        lines.append("    try:")
+        if webhook_post_waves:
+            _emit_waves(webhook_post_waves, edges=graph_edges, base_indent=8, lines=lines)
+        else:
+            lines.append("        _final_output = {'mode': 'by_terminal_branch', 'branches': {}, 'terminals': [], 'legacy_items': list(_items)}")
+        lines.append("    except _StopIterationExecution as _stop_ex:")
+        lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
+        lines.append("    return _final_output")
+        lines.append("")
+
+        lines.append(WORKFLOW_MAIN_START)
+        lines.append(webhook_node.to_code(indent=4))
+        lines.append(WORKFLOW_MAIN_END)
+        return "\n".join(lines)
 
     # All workflow logic goes inside _run() so errors are caught at the top level
     lines.append(WORKFLOW_MAIN_START)  # "def _run():"
@@ -761,7 +1102,7 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         # Waves before the scheduler → setup code (indent=4, inside _run)
         if waves[:scheduler_wave_idx]:
             lines.append("    try:")
-            _emit_waves(waves[:scheduler_wave_idx], edges=edges, base_indent=8, lines=lines)
+            _emit_waves(waves[:scheduler_wave_idx], edges=graph_edges, base_indent=8, lines=lines)
             lines.append("    except _StopIterationExecution as _stop_ex:")
             lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
             lines.append("        return")
@@ -791,7 +1132,7 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         post_scheduler_waves = waves[scheduler_wave_idx + 1:]
         if post_scheduler_waves:
             lines.append("        try:")
-            _emit_waves(post_scheduler_waves, edges=edges, base_indent=12, lines=lines)
+            _emit_waves(post_scheduler_waves, edges=graph_edges, base_indent=12, lines=lines)
             lines.append("        except _StopIterationExecution as _stop_ex:")
             lines.append("            _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
             lines.append("")
@@ -804,7 +1145,7 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
     else:
         # No scheduler — all waves run sequentially inside _run (indent=4)
         lines.append("    try:")
-        _emit_waves(waves, edges=edges, base_indent=8, lines=lines)
+        _emit_waves(waves, edges=graph_edges, base_indent=8, lines=lines)
         lines.append("    except _StopIterationExecution as _stop_ex:")
         lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
 
@@ -1100,6 +1441,9 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     errors = validate_graph(nodes, edges)
     if errors:
         raise ValueError("Validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
+
+    if any(str(node.get("type", "")) == WebhookNode.NODE_TYPE for node in nodes):
+        raise ValueError("Run trace mode does not support Webhook workflows. Use Preview/Build and call the generated webhook endpoint.")
 
     waves = _topological_waves(nodes, edges)
 

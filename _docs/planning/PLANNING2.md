@@ -221,3 +221,141 @@ Agregar:
 1. Verificar guardado/carga de configuracion con multiples calculos.
 2. Verificar operaciones unarias y binarias con literales y placeholders.
 3. Validar errores controlados (division por cero, variable faltante, valor invalido).
+
+---
+
+# Plan de Implementacion - Nodo `webhook`
+
+## Estado
+
+Documento de planificacion. **No contiene implementacion**.
+
+## Objetivo
+
+Agregar un nodo de entrada `webhook` que exponga un servicio HTTP (`GET` y/o `POST`) para disparar el workflow y devolver una respuesta REST al cliente que invoca.
+
+## Alcance
+
+Incluye:
+
+- Nuevo nodo backend + frontend (`webhook`).
+- Definicion de parametros de entrada por nombre, origen y tipo.
+- Soporte para endpoint configurable (`host`, `port`, `path`).
+- Ejecucion del subgrafo aguas abajo del nodo webhook por cada request entrante.
+- Mapeo de respuesta HTTP final (body, status, headers) desde variables del workflow.
+
+No incluye (esta fase):
+
+- Autenticacion nativa (tokens/API keys) del endpoint webhook.
+- TLS/HTTPS embebido en el servidor generado.
+- Versionado de endpoints multiples dentro del mismo workflow.
+
+## Reglas Funcionales
+
+### 1) Nodo de entrada
+
+- `webhook` es trigger de inicio (`inputs=0`, `outputs=1`).
+- No puede tener edges entrantes.
+- Se permite **solo un** webhook por workflow.
+
+### 2) Metodo HTTP
+
+- Soporta `GET`, `POST` y `BOTH`.
+- Si llega un metodo no permitido, debe responder `405`.
+
+### 3) Parametros de entrada
+
+Cada parametro se define con:
+
+```json
+{
+  "name": "customer_id",
+  "source": "query",
+  "type": "number",
+  "required": true
+}
+```
+
+Donde:
+
+- `source`: `query` | `body` | `header`
+- `type`: `string` | `number` | `boolean` | `object` | `array`
+- `required`: si falta, el request falla con error de validacion.
+
+### 4) Contexto inyectado al flujo
+
+Para cada request, el flujo inicia con `_items` que incluyen:
+
+- `webhook_request`
+- `webhook_method`
+- `webhook_path`
+- `webhook_query`
+- `webhook_headers`
+- `webhook_body`
+- `webhook_params`
+
+### 5) Respuesta HTTP
+
+El nodo permite mapear variables de salida del workflow:
+
+- `response_body_var` (body JSON)
+- `response_status_var` (codigo HTTP)
+- `response_headers_var` (headers extra)
+
+Si no existe `response_body_var`, se responde un payload por defecto con `workflow_output`.
+
+## Diseno Backend
+
+### 1) Nuevo nodo
+
+- Crear `app/nodes/webhook.py`.
+- Validar configuracion (`method`, `host`, `port`, `path`, `input_params`, vars de respuesta).
+- Generar codigo para inicializar servidor webhook y enlazar handler del workflow.
+
+### 2) Generador
+
+Cambios en `app/codegen/generator.py`:
+
+- Registrar `WebhookNode` en `NODE_REGISTRY`.
+- Agregar helpers runtime para:
+  - parseo y coercion de params,
+  - servidor HTTP con `ThreadingHTTPServer`,
+  - resolucion de variables de respuesta desde output del workflow.
+- Detectar subgrafo downstream desde webhook y ejecutarlo por request.
+- Reglas de validacion:
+  - un solo webhook,
+  - webhook sin entradas,
+  - no mezclar webhook con scheduler.
+
+### 3) Modo Run
+
+- `generate_run_script()` no soporta webhook (listener bloqueante).
+- Debe responder error claro indicando usar Preview/Build para probar endpoint.
+
+## Diseno Frontend
+
+### 1) Componente
+
+- Crear `frontend/src/nodes/WebhookNode.jsx`.
+- Card resume metodo + endpoint.
+- Props form para configurar:
+  - metodo,
+  - host/port/path,
+  - lista dinamica de input params,
+  - mapeo de variables de respuesta.
+
+### 2) Registro
+
+- Actualizar `frontend/src/nodes/index.js`:
+  - `nodeTypes.webhook`
+  - `NODE_META.webhook` con `inputs: 0`, `outputs: 1` y `defaultConfig`.
+
+## Criterios de Aceptacion
+
+1. Existe nodo `webhook` en el editor.
+2. Permite definir endpoint y metodo (`GET/POST/BOTH`).
+3. Permite definir parametros de entrada con tipo y origen.
+4. Cada request dispara el flujo aguas abajo del webhook.
+5. El flujo puede devolver respuesta HTTP personalizada (body/status/headers).
+6. Webhook no acepta entradas y no convive con Scheduler.
+7. `POST /run` devuelve error explicito cuando el workflow contiene webhook.
