@@ -145,6 +145,9 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
     }
 
     const entries = Object.entries(finalOutput.branches);
+    const branchElapsed = (finalOutput && typeof finalOutput.branch_elapsed_seconds === 'object' && finalOutput.branch_elapsed_seconds)
+      ? finalOutput.branch_elapsed_seconds
+      : {};
     if (!entries.length) {
       return (
         <div className="mx-4 mt-2 rounded-md border border-border p-2 text-xs text-muted-foreground">
@@ -169,8 +172,13 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
         </div>
         {entries.map(([branchId, items]) => (
           <div key={branchId} className="mb-2 last:mb-0">
-            <div className="text-xs text-muted-foreground mb-1">
+            <div className="text-xs text-muted-foreground mb-1 flex items-center gap-2">
               <code className="run-ctx">{branchId}</code>
+              {Object.prototype.hasOwnProperty.call(branchElapsed, branchId) && (
+                <span>
+                  ({branchElapsed[branchId] == null ? 'n/a' : `${branchElapsed[branchId]}s`})
+                </span>
+              )}
             </div>
             <div className="text-xs">{fmtItems(items)}</div>
           </div>
