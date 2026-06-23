@@ -125,6 +125,8 @@ This writes the bundle to `app/static/dist/`. Flask serves the assets via dedica
 | Workflow name      | Click to rename                                                               |
 | **Preview Code**   | Shows the generated Python code                                               |
 | **Save**           | Saves the graph manually (auto-save also runs 800 ms after any change)        |
+| **Export Template**| Exports current workflow graph as a reusable JSON template                     |
+| **Import Template**| Imports a template JSON and creates a new workspace from it                    |
 | **▶ Run**          | Executes the workflow and displays per-node input/output in the results panel |
 | **⚙ Generate EXE** | Compiles the workflow to a standalone `.exe` via PyInstaller                  |
 
@@ -497,6 +499,8 @@ workflow-exe/
 | DELETE | `/api/workflows/{id}`                       | Delete workflow and its DB                     |
 | GET    | `/api/workflows/{id}/graph`                 | Get nodes and edges                            |
 | POST   | `/api/workflows/{id}/graph`                 | Save nodes and edges                           |
+| GET    | `/api/workflows/{id}/template/export`       | Export workflow as template JSON               |
+| POST   | `/api/workflows/template/import`            | Import template JSON and create workflow       |
 | POST   | `/api/workflows/{id}/validate`              | Validate graph without compiling               |
 | POST   | `/api/workflows/{id}/preview`               | Return the generated Python code               |
 | POST   | `/api/workflows/{id}/build`                 | Start async EXE compilation (returns `job_id`) |

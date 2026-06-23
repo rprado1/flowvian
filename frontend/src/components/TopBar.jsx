@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { useWorkflow } from '@/context/WorkflowContext';
 
 export default function TopBar({
-  onRename, onPreview, onSave, onRun, onStopRun, onBuild,
+  onRename, onPreview, onSave, onRun, onStopRun, onBuild, onExportTemplate, onImportTemplate,
   onBackToWorkspaces,
   running, runStateMsg, building,
 }) {
@@ -42,6 +42,12 @@ export default function TopBar({
       </Button>
       <Button variant="outline" size="sm" onClick={onSave} disabled={!currentWfId}>
         Save
+      </Button>
+      <Button variant="outline" size="sm" onClick={onExportTemplate} disabled={!currentWfId}>
+        Export Template
+      </Button>
+      <Button variant="outline" size="sm" onClick={onImportTemplate} disabled={!currentWfId}>
+        Import Template
       </Button>
       <Button
         variant="outline"
