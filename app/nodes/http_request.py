@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 from app.nodes.base import BaseNode
 
 
-_URL_TEMPLATE_PREFIX_RE = re.compile(r"^(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|#\{[A-Za-z_][A-Za-z0-9_]*\})")
+_URL_TEMPLATE_PREFIX_RE = re.compile(r"^(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|#\{[A-Za-z_][A-Za-z0-9_]*\}|@\{[A-Za-z_][A-Za-z0-9_]*\})")
 _PLACEHOLDER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -19,6 +19,8 @@ def _read_placeholder(text: str, start: int) -> Tuple[Optional[str], int]:
     if text.startswith("${", start):
         prefix_len = 2
     elif text.startswith("#{", start):
+        prefix_len = 2
+    elif text.startswith("@{", start):
         prefix_len = 2
     else:
         return None, start
@@ -91,7 +93,7 @@ class HttpRequestNode(BaseNode):
             or _starts_with_url_template(url)
         ):
             errors.append(
-                "http_request: url must start with http:// or https://, or with a template like ${VAR} / #{SECRET}"
+                "http_request: url must start with http:// or https://, or with a template like ${VAR} / #{SECRET} / @{GLOBAL}"
             )
 
         query_params = self.config.get("query_params", [])

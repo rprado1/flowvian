@@ -168,14 +168,22 @@ while True:
 
 Assigns key=value pairs to the workflow context.
 
-| Field | Description                |
-| ----- | -------------------------- |
-| key   | Valid Python variable name |
-| value | Value (stored as string)   |
+| Field  | Description                                  |
+| ------ | -------------------------------------------- |
+| key    | Valid Python variable name                   |
+| scope  | `Local` (default) or `Global`               |
+| mode   | `Literal`, `Template (${VAR})`, or `Path`   |
+| value  | Source value (typed by configured `type`)    |
 
 ```python
 my_variable = 'value'
 ```
+
+Notes:
+
+- Local variables are available as item variables via `${VAR}`.
+- Global variables can be referenced from any node via `@{VAR}`.
+- Secret placeholders remain `#{SECRET}`.
 
 ### 📅 Get Current Date UTC
 

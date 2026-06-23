@@ -219,7 +219,7 @@ export function SwitchPropsForm({ config, onChange }) {
             <div className="prop-group">
               <Label className="text-xs font-medium">Variable to evaluate</Label>
               <Input
-                placeholder="${VARIABLE}"
+                placeholder="${VAR} / @{GLOBAL} / #{SECRET}"
                 value={route.condition?.input || ''}
                 onChange={e => updateRoute(idx, { condition: { input: e.target.value } })}
               />
@@ -261,7 +261,7 @@ export function SwitchPropsForm({ config, onChange }) {
               <div className="prop-group">
                 <Label className="text-xs font-medium">Comparison value</Label>
                 <Input
-                  placeholder={dataType === 'object' ? 'property or ${VARIABLE}' : 'literal or ${VARIABLE}'}
+                  placeholder={dataType === 'object' ? 'property or ${VAR}/@{GLOBAL}/#{SECRET}' : 'literal or ${VAR}/@{GLOBAL}/#{SECRET}'}
                   value={route.condition?.compare_value || ''}
                   onChange={e => updateRoute(idx, { condition: { compare_value: e.target.value } })}
                 />

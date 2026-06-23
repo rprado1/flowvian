@@ -42,7 +42,7 @@ export function FormatDatePropsForm({ config, onChange }) {
       <div className="prop-group">
         <Label>Input variable</Label>
         <Input
-          placeholder="${VARIABLE}"
+          placeholder="${VARIABLE} or @{GLOBAL_VAR}"
           value={inputExpr}
           onChange={e => onChange({ ...config, input: e.target.value })}
         />

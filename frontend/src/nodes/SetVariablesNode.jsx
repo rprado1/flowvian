@@ -48,6 +48,11 @@ export function SetVariablesPropsForm({ config, onChange }) {
     return String(entry?.value_mode || (String(entry?.value || '').includes('${') ? 'template' : 'literal'));
   };
 
+  const getScope = (entry) => {
+    const scope = String(entry?.scope || 'local').toLowerCase();
+    return scope === 'global' ? 'global' : 'local';
+  };
+
   const updateVar = (idx, field, value) => {
     const next = variables.map((v, i) => {
       if (i !== idx) return v;
@@ -65,7 +70,7 @@ export function SetVariablesPropsForm({ config, onChange }) {
   };
 
   const addVar = () => {
-    onChange({ ...config, variables: [...variables, { key: '', type: 'string', value_mode: 'literal', value: '' }] });
+    onChange({ ...config, variables: [...variables, { key: '', type: 'string', scope: 'local', value_mode: 'literal', value: '' }] });
   };
 
   const removeVar = (idx) => {
@@ -131,6 +136,15 @@ export function SetVariablesPropsForm({ config, onChange }) {
           </select>
 
           <select
+            value={getScope(v)}
+            onChange={e => updateVar(idx, 'scope', e.target.value)}
+            className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
+          >
+            <option value="local">Local</option>
+            <option value="global">Global (@{`{VAR}`})</option>
+          </select>
+
+          <select
             value={getMode(v)}
             onChange={e => updateVar(idx, 'value_mode', e.target.value)}
             className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
@@ -160,19 +174,25 @@ export function SetVariablesPropsForm({ config, onChange }) {
           />
 
           <p className="text-[11px] text-muted-foreground">
-            {normalizeType(v.type) === 'secret'
-              ? 'Stored encrypted. Configure W_METADATA_1 to decrypt at runtime.'
-              : getMode(v) === 'path'
-              ? 'Use path notation like args.country or items[0].id.'
-              : 'Use '} 
+              {normalizeType(v.type) === 'secret'
+                ? 'Stored encrypted. Configure W_METADATA_1 to decrypt at runtime.'
+                : getMode(v) === 'path'
+                ? 'Use path notation like args.country or items[0].id.'
+                : getScope(v) === 'global'
+                ? 'Global scope: available in any node as @{VAR}.'
+                : 'Use '} 
             {normalizeType(v.type) === 'secret'
               ? null
               : getMode(v) === 'path'
+              ? null
+              : getScope(v) === 'global'
               ? null
               : <code>${'{'}variable{'}'}</code>} 
             {normalizeType(v.type) === 'secret'
               ? null
               : getMode(v) === 'path'
+              ? null
+              : getScope(v) === 'global'
               ? null
               : ' to reference flow input values.'}
           </p>

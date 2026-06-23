@@ -58,4 +58,5 @@
 
 # Fase 5
 
-- 1.- Requiero una forma de exportar e importar la plantilla de un workflow, considerar que algunos pasos tienen secretos, revisa cual es la mejor forma de realizarlo
+- 1.- Requiero en el nodo set variables e pueda definir variables globales (agregar en el lsecotor donde estan otros tipos: Literal, Template, Path), una vez definida un avaraible global se podra usar en cualquier nodo usando el el template @{VAR}
+- 2.- Requiero una forma de exportar e importar la plantilla de un workflow, considerar que algunos pasos tienen secretos, revisa cual es la mejor forma de realizarlo

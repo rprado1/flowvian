@@ -97,10 +97,12 @@ _logger = logging.getLogger(__name__)
 
 _TPL_VAR_RE = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 _SECRET_VAR_RE = re.compile(r"#\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
+_GLOBAL_VAR_RE = re.compile(r"@\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 _MAX_REQUEST_BODY_BYTES = 1_000_000
 _MAX_RESPONSE_BODY_BYTES = 2_000_000
 _SECRET_PREFIX = "enc:v1:"
 _secret_store = {}
+_global_store = {}
 _current_node_label = ""
 _stop_path = os.environ.get("WORKFLOW_STOP_PATH", "")
 
@@ -167,6 +169,23 @@ def _resolve_secret_placeholders(_text):
 
     return _SECRET_VAR_RE.sub(_replace, _text)
 
+def _resolve_global_placeholders(_text):
+    if not isinstance(_text, str):
+        return _text
+
+    def _replace(_match):
+        _name = _match.group(1)
+        if _name not in _global_store:
+            if _current_node_label:
+                raise ValueError(f"Missing global variable: {_name} (node: {_current_node_label})")
+            raise ValueError(f"Missing global variable: {_name}")
+        _value = _global_store.get(_name)
+        if _value is None:
+            return ""
+        return str(_value)
+
+    return _GLOBAL_VAR_RE.sub(_replace, _text)
+
 class _StopIterationExecution(Exception):
     def __init__(self, message, node_id=None, node_type=None):
         super().__init__(str(message))
@@ -179,6 +198,7 @@ def _resolve_template(_text, _item):
         return _text
 
     _text = _resolve_secret_placeholders(_text)
+    _text = _resolve_global_placeholders(_text)
 
     def _replace(_match):
         _name = _match.group(1)
@@ -198,6 +218,7 @@ def _resolve_json_template(_obj, _item):
         return [_resolve_json_template(_v, _item) for _v in _obj]
     if isinstance(_obj, str):
         _obj = _resolve_secret_placeholders(_obj)
+        _obj = _resolve_global_placeholders(_obj)
         _m = _TPL_VAR_RE.fullmatch(_obj)
         if _m:
             _name = _m.group(1)
@@ -244,7 +265,7 @@ def _json_loads_allow_unquoted_placeholders(_raw_json):
             _i += 1
             continue
 
-        if _raw_json.startswith('${', _i) or _raw_json.startswith('#{', _i):
+        if _raw_json.startswith('${', _i) or _raw_json.startswith('#{', _i) or _raw_json.startswith('@{', _i):
             _end = _raw_json.find('}', _i + 2)
             if _end > (_i + 2):
                 _name = _raw_json[_i + 2:_end]
@@ -631,7 +652,7 @@ def _serve_webhook(method, host, port, path, input_params, response_body_var, re
 
 WORKFLOW_MAIN_START = '''\
 def _run():
-    global _items, _final_output, _secret_store
+    global _items, _final_output, _secret_store, _global_store
 '''
 
 WORKFLOW_MAIN_END = '''\
@@ -1091,6 +1112,7 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
     lines.append("# ---- Initialize items array ----")
     lines.append("EXECUTION_ID = str(uuid.uuid4())")
     lines.append("_secret_store = {}")
+    lines.append("_global_store = {}")
     lines.append("_items = [{")
     lines.append('    "workflowId": WORKFLOW_ID,')
     lines.append('    "executionId": EXECUTION_ID,')
@@ -1124,9 +1146,10 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         webhook_post_waves = waves[webhook_wave_idx + 1:]
 
         lines.append("def _execute_webhook_workflow(_webhook_request):")
-        lines.append("    global _items, _final_output, _secret_store")
+        lines.append("    global _items, _final_output, _secret_store, _global_store")
         lines.append("    EXECUTION_ID = str(uuid.uuid4())")
         lines.append("    _secret_store = {}")
+        lines.append("    _global_store = {}")
         lines.append("    _items = [{")
         lines.append('        "workflowId": WORKFLOW_ID,')
         lines.append('        "executionId": EXECUTION_ID,')
@@ -1181,6 +1204,7 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         # Reset execution context on each scheduler tick
         lines.append("        EXECUTION_ID = str(uuid.uuid4())")
         lines.append("        _secret_store = {}")
+        lines.append("        _global_store = {}")
         lines.append("        _items = [{")
         lines.append('            "workflowId": WORKFLOW_ID,')
         lines.append('            "executionId": EXECUTION_ID,')
@@ -1245,10 +1269,12 @@ _run_state_path = os.environ.get("WORKFLOW_RUN_STATE_PATH", "")
 
 _TPL_VAR_RE = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 _SECRET_VAR_RE = re.compile(r"#\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
+_GLOBAL_VAR_RE = re.compile(r"@\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 _MAX_REQUEST_BODY_BYTES = 1_000_000
 _MAX_RESPONSE_BODY_BYTES = 2_000_000
 _SECRET_PREFIX = "enc:v1:"
 _secret_store = {}
+_global_store = {}
 _current_node_label = ""
 
 def _set_current_node_label(_label):
@@ -1314,6 +1340,23 @@ def _resolve_secret_placeholders(_text):
 
     return _SECRET_VAR_RE.sub(_replace, _text)
 
+def _resolve_global_placeholders(_text):
+    if not isinstance(_text, str):
+        return _text
+
+    def _replace(_match):
+        _name = _match.group(1)
+        if _name not in _global_store:
+            if _current_node_label:
+                raise ValueError(f"Missing global variable: {_name} (node: {_current_node_label})")
+            raise ValueError(f"Missing global variable: {_name}")
+        _value = _global_store.get(_name)
+        if _value is None:
+            return ""
+        return str(_value)
+
+    return _GLOBAL_VAR_RE.sub(_replace, _text)
+
 class _StopIterationExecution(Exception):
     def __init__(self, message, node_id=None, node_type=None):
         super().__init__(str(message))
@@ -1326,6 +1369,7 @@ def _resolve_template(_text, _item):
         return _text
 
     _text = _resolve_secret_placeholders(_text)
+    _text = _resolve_global_placeholders(_text)
 
     def _replace(_match):
         _name = _match.group(1)
@@ -1345,6 +1389,7 @@ def _resolve_json_template(_obj, _item):
         return [_resolve_json_template(_v, _item) for _v in _obj]
     if isinstance(_obj, str):
         _obj = _resolve_secret_placeholders(_obj)
+        _obj = _resolve_global_placeholders(_obj)
         _m = _TPL_VAR_RE.fullmatch(_obj)
         if _m:
             _name = _m.group(1)
@@ -1382,7 +1427,7 @@ def _json_loads_allow_unquoted_placeholders(_raw_json):
             _i += 1
             continue
 
-        if _raw_json.startswith('${', _i) or _raw_json.startswith('#{', _i):
+        if _raw_json.startswith('${', _i) or _raw_json.startswith('#{', _i) or _raw_json.startswith('@{', _i):
             _end = _raw_json.find('}', _i + 2)
             if _end > (_i + 2):
                 _name = _raw_json[_i + 2:_end]
@@ -1846,9 +1891,10 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("")
 
         lines.append("def _execute_webhook_workflow(_webhook_request):")
-        lines.append("    global _trace, _items, _final_output, _secret_store")
+        lines.append("    global _trace, _items, _final_output, _secret_store, _global_store")
         lines.append("    EXECUTION_ID = str(uuid.uuid4())")
         lines.append("    _secret_store = {}")
+        lines.append("    _global_store = {}")
         lines.append("    _items = [{")
         lines.append('        "workflowId": WORKFLOW_ID,')
         lines.append('        "executionId": EXECUTION_ID,')
@@ -1875,7 +1921,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("")
 
         lines.append("def _run():")
-        lines.append("    global _trace, _items, _final_output, _secret_store")
+        lines.append("    global _trace, _items, _final_output, _secret_store, _global_store")
         lines.append(f"    _webhook_method = {webhook_method!r}")
         lines.append(f"    _webhook_host = {webhook_host!r}")
         lines.append(f"    _webhook_port = {webhook_port!r}")
@@ -1924,6 +1970,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     lines.append("# ---- Initialize items array ----")
     lines.append("EXECUTION_ID = str(uuid.uuid4())")
     lines.append("_secret_store = {}")
+    lines.append("_global_store = {}")
     lines.append("_items = [{")
     lines.append('    "workflowId": WORKFLOW_ID,')
     lines.append('    "executionId": EXECUTION_ID,')
@@ -1940,7 +1987,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
             break
 
     lines.append("def _run():")
-    lines.append("    global _trace, _items, _final_output, _secret_store")
+    lines.append("    global _trace, _items, _final_output, _secret_store, _global_store")
     lines.append("")
 
     if scheduler_wave_idx is not None:

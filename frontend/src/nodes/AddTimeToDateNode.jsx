@@ -24,7 +24,7 @@ export function TimeDeltaFields({ config, onChange, verb = 'add' }) {
         <Label>Input datetime variable</Label>
         <Input
           value={config.input_var ?? ''}
-          placeholder="variable name"
+          placeholder="variable name or @{GLOBAL_VAR}"
           onChange={e => onChange({ ...config, input_var: e.target.value.trim() })}
         />
       </div>
