@@ -32,6 +32,7 @@ from app.nodes.sort import SortNode
 from app.nodes.switch import SwitchNode
 from app.nodes.openai_responses import OpenaiResponsesNode
 from app.nodes.calculator import CalculatorNode
+from app.nodes.map import MapNode
 from app.nodes.webhook import WebhookNode
 from app.nodes.telegram_send_message import TelegramSendMessageNode
 
@@ -55,6 +56,7 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     SwitchNode.NODE_TYPE: SwitchNode,
     OpenaiResponsesNode.NODE_TYPE: OpenaiResponsesNode,
     CalculatorNode.NODE_TYPE: CalculatorNode,
+    MapNode.NODE_TYPE: MapNode,
     WebhookNode.NODE_TYPE: WebhookNode,
     TelegramSendMessageNode.NODE_TYPE: TelegramSendMessageNode
 }
