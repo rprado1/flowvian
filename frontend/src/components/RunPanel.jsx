@@ -3,40 +3,49 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 
+function valueToText(value) {
+  if (value == null) return '';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value);
+    } catch (error) {
+      void error;
+      return '[unserializable object]';
+    }
+  }
+  return String(value);
+}
+
+function shouldTruncateValue(value) {
+  return typeof value !== 'object' || value == null;
+}
+
 function fmtItems(items) {
   if (!items || !Array.isArray(items) || !items.length) {
     return <span className="text-muted-foreground">—</span>;
   }
   
   return (
-    <span className="block">
+    <span className="block break-all whitespace-normal">
       <span className="text-muted-foreground text-xs">
         {items.length} item{items.length !== 1 ? 's' : ''}
       </span>
-      {items.slice(0, 3).map((item, idx) => {
-        const entries = Object.entries(item).slice(0, 5);
+      {items.map((item, idx) => {
+        const entries = Object.entries(item);
         return (
           <span key={idx} className="block text-xs mt-1 pl-2 border-l-2 border-border">
             {entries.map(([k, v]) => {
-              let val = String(v ?? '');
-              if (val.length > 40) val = val.substring(0, 37) + '…';
+              let val = valueToText(v);
+              if (shouldTruncateValue(v) && val.length > 40) val = val.substring(0, 37) + '…';
               return (
                 <span key={k} className="block">
                   <code className="run-ctx">{k}</code> = {val}
                 </span>
               );
             })}
-            {Object.keys(item).length > 5 && (
-              <span className="text-muted-foreground">+{Object.keys(item).length - 5} more</span>
-            )}
           </span>
         );
       })}
-      {items.length > 3 && (
-        <span className="text-xs text-muted-foreground pl-2">
-          +{items.length - 3} more items
-        </span>
-      )}
     </span>
   );
 }
@@ -136,6 +145,9 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
     }
 
     const entries = Object.entries(finalOutput.branches);
+    const branchElapsed = (finalOutput && typeof finalOutput.branch_elapsed_seconds === 'object' && finalOutput.branch_elapsed_seconds)
+      ? finalOutput.branch_elapsed_seconds
+      : {};
     if (!entries.length) {
       return (
         <div className="mx-4 mt-2 rounded-md border border-border p-2 text-xs text-muted-foreground">
@@ -160,8 +172,13 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
         </div>
         {entries.map(([branchId, items]) => (
           <div key={branchId} className="mb-2 last:mb-0">
-            <div className="text-xs text-muted-foreground mb-1">
+            <div className="text-xs text-muted-foreground mb-1 flex items-center gap-2">
               <code className="run-ctx">{branchId}</code>
+              {Object.prototype.hasOwnProperty.call(branchElapsed, branchId) && (
+                <span>
+                  ({branchElapsed[branchId] == null ? 'n/a' : `${branchElapsed[branchId]}s`})
+                </span>
+              )}
             </div>
             <div className="text-xs">{fmtItems(items)}</div>
           </div>
@@ -198,16 +215,16 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
           </div>
         )}
         {renderFinalOutput(finalOutput)}
-        <Table>
+        <Table className="table-fixed w-full">
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
               <TableHead className="w-8 text-muted-foreground">#</TableHead>
-              <TableHead className="text-muted-foreground">Node</TableHead>
-              <TableHead className="text-muted-foreground">Type</TableHead>
-              <TableHead className="text-muted-foreground">Time</TableHead>
-              <TableHead className="text-muted-foreground">Status</TableHead>
-              <TableHead className="text-muted-foreground">Items In</TableHead>
-              <TableHead className="text-muted-foreground">Items Out</TableHead>
+              <TableHead className="w-40 text-muted-foreground">Node</TableHead>
+              <TableHead className="w-24 text-muted-foreground">Type</TableHead>
+              <TableHead className="w-24 text-muted-foreground">Time</TableHead>
+              <TableHead className="w-24 text-muted-foreground">Status</TableHead>
+              <TableHead className="w-[30%] text-muted-foreground">Items In</TableHead>
+              <TableHead className="w-[30%] text-muted-foreground">Items Out</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -224,16 +241,16 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
               return (
               <TableRow key={i} className={`border-border ${rowClass}`}>
                 <TableCell className="text-xs">{i + 1}</TableCell>
-                <TableCell className="text-xs font-semibold">{tr.label || tr.id || '?'}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{tr.type || '?'}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">
+                <TableCell className="text-xs font-semibold break-words">{tr.label || tr.id || '?'}</TableCell>
+                <TableCell className="text-xs text-muted-foreground break-words">{tr.type || '?'}</TableCell>
+                <TableCell className="text-xs text-muted-foreground break-words">
                   {tr.ts ? new Date(tr.ts * 1000).toLocaleTimeString() : '—'}
                 </TableCell>
-                <TableCell className="text-xs">
+                <TableCell className="text-xs break-words">
                   {tr.status === 'ok' ? '✅' : (isStopped ? '🛑' : '❌')} {tr.status}
                 </TableCell>
-                <TableCell className="text-xs">{fmtItems(tr.items_in)}</TableCell>
-                <TableCell className="text-xs">
+                <TableCell className="text-xs align-top max-w-[420px] break-all whitespace-normal">{fmtItems(tr.items_in)}</TableCell>
+                <TableCell className="text-xs align-top max-w-[420px] break-all whitespace-normal">
                   {fmtItems(tr.items_out)}
                   {tr.type === 'if' && fmtIfEvaluations(tr.debug)}
                   {tr.error && (

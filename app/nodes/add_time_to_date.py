@@ -21,7 +21,7 @@ class AddTimeToDateNode(BaseNode):
     """
 
     NODE_TYPE = "add_time_to_date"
-    _PLACEHOLDER_RE = re.compile(r"\$\{[A-Za-z_][A-Za-z0-9_]*\}")
+    _PLACEHOLDER_RE = re.compile(r"(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|@\{[A-Za-z_][A-Za-z0-9_]*\}|#\{[A-Za-z_][A-Za-z0-9_]*\})")
 
     @classmethod
     def _is_dynamic_value(cls, raw_value) -> bool:
@@ -33,9 +33,9 @@ class AddTimeToDateNode(BaseNode):
         input_var = self.config.get("input_var", "").strip()
         if not input_var:
             errors.append("add_time_to_date: input_var cannot be empty")
-        elif not input_var.isidentifier():
+        elif not self._is_dynamic_value(input_var) and not input_var.isidentifier():
             errors.append(
-                f"add_time_to_date: input_var '{input_var}' is not a valid Python identifier"
+                f"add_time_to_date: input_var '{input_var}' must be a variable name or template"
             )
 
         output_var = self.config.get("output_var", "new_date").strip()
@@ -84,7 +84,17 @@ class AddTimeToDateNode(BaseNode):
 
         lines = [
             "# Add Time to Date",
-            f"_input_val = datetime.fromisoformat(_item[{repr(input_var)}])",
+            f"_input_var_raw = {input_var!r}",
+            "if _TPL_VAR_RE.search(_input_var_raw) or _GLOBAL_VAR_RE.search(_input_var_raw) or _SECRET_VAR_RE.search(_input_var_raw):",
+            "    _input_src = _resolve_template(_input_var_raw, _item)",
+            "else:",
+            "    if _input_var_raw not in _item:",
+            "        raise ValueError(f\"add_time_to_date: input variable '{_input_var_raw}' not found\")",
+            "    _input_src = _item.get(_input_var_raw)",
+            "if isinstance(_input_src, datetime):",
+            "    _input_val = _input_src",
+            "else:",
+            "    _input_val = datetime.fromisoformat(str(_input_src))",
         ]
 
         for field in VALID_UNITS:
@@ -101,7 +111,7 @@ class AddTimeToDateNode(BaseNode):
                     f"    {field_var}_txt = str({field_var}_raw).strip()",
                     f"    if not {field_var}_txt:",
                     f"        raise ValueError(\"add_time_to_date: '{field}' cannot be empty\")",
-                    f"    if _TPL_VAR_RE.search({field_var}_txt):",
+                    f"    if _TPL_VAR_RE.search({field_var}_txt) or _GLOBAL_VAR_RE.search({field_var}_txt) or _SECRET_VAR_RE.search({field_var}_txt):",
                     f"        {field_var}_txt = str(_resolve_template({field_var}_txt, _item)).strip()",
                     "    try:",
                     f"        {field_var} = float({field_var}_txt)",

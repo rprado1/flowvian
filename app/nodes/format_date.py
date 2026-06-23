@@ -6,7 +6,8 @@ from app.nodes.base import BaseNode
 class FormatDateNode(BaseNode):
     NODE_TYPE = "format_date"
 
-    _EXACT_PLACEHOLDER_RE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+    _EXACT_ITEM_PLACEHOLDER_RE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+    _EXACT_GLOBAL_PLACEHOLDER_RE = re.compile(r"^@\{([A-Za-z_][A-Za-z0-9_]*)\}$")
     _ALLOWED_FORMATS = {
         "iso_8601",
         "date_yyyy_mm_dd",
@@ -17,19 +18,22 @@ class FormatDateNode(BaseNode):
     }
 
     @classmethod
-    def _parse_input_name(cls, raw_input) -> str:
+    def _parse_input_reference(cls, raw_input) -> tuple[str, str]:
         text = str(raw_input or "").strip()
-        match = cls._EXACT_PLACEHOLDER_RE.fullmatch(text)
-        if not match:
-            return ""
-        return match.group(1)
+        item_match = cls._EXACT_ITEM_PLACEHOLDER_RE.fullmatch(text)
+        if item_match:
+            return ("item", item_match.group(1))
+        global_match = cls._EXACT_GLOBAL_PLACEHOLDER_RE.fullmatch(text)
+        if global_match:
+            return ("global", global_match.group(1))
+        return ("", "")
 
     def validate(self) -> list[str]:
         errors: list[str] = []
 
-        input_name = self._parse_input_name(self.config.get("input", ""))
+        input_scope, input_name = self._parse_input_reference(self.config.get("input", ""))
         if not input_name:
-            errors.append("format_date: input must be a variable placeholder like ${MY_DATE}")
+            errors.append("format_date: input must be a variable placeholder like ${MY_DATE} or @{MY_GLOBAL_DATE}")
 
         format_name = str(self.config.get("format", "iso_8601")).strip()
         if format_name not in self._ALLOWED_FORMATS:
@@ -48,18 +52,24 @@ class FormatDateNode(BaseNode):
         return errors
 
     def to_code(self, indent: int = 0) -> str:
-        input_name = self._parse_input_name(self.config.get("input", ""))
+        input_scope, input_name = self._parse_input_reference(self.config.get("input", ""))
         format_name = str(self.config.get("format", "iso_8601")).strip() or "iso_8601"
         output_var = str(self.config.get("output_var", "formatted_date")).strip() or "formatted_date"
 
         lines = [
             "# Format Date",
+            f"_fd_input_scope = {input_scope!r}",
             f"_fd_input_name = {input_name!r}",
             f"_fd_format = {format_name!r}",
             f"_fd_output_var = {output_var!r}",
-            "if _fd_input_name not in _item:",
-            "    raise ValueError(f\"format_date: missing variable '{_fd_input_name}' in input item\")",
-            "_fd_raw = _item.get(_fd_input_name)",
+            "if _fd_input_scope == 'global':",
+            "    if _fd_input_name not in _global_store:",
+            "        raise ValueError(f\"format_date: missing global variable '{_fd_input_name}'\")",
+            "    _fd_raw = _global_store.get(_fd_input_name)",
+            "else:",
+            "    if _fd_input_name not in _item:",
+            "        raise ValueError(f\"format_date: missing variable '{_fd_input_name}' in input item\")",
+            "    _fd_raw = _item.get(_fd_input_name)",
             "_fd_dt = None",
             "if isinstance(_fd_raw, datetime):",
             "    _fd_dt = _fd_raw",

@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 import traceback
 import uuid
 
@@ -238,6 +239,9 @@ def run_workflow(workflow_id):
     env["WORKFLOW_STOP_PATH"] = stop_path
     env["WORKFLOW_RUN_STATE_PATH"] = state_path
 
+    run_started_at = time.perf_counter()
+    run_started_at_epoch = time.time()
+
     try:
         with _RUN_LOCK:
             if workflow_id in _RUN_STATE:
@@ -280,6 +284,8 @@ def run_workflow(workflow_id):
         with _RUN_LOCK:
             _RUN_STATE.pop(workflow_id, None)
 
+    run_elapsed_seconds = round(max(time.perf_counter() - run_started_at, 0.0), 3)
+
     traces = []
     if os.path.exists(trace_path):
         try:
@@ -296,7 +302,51 @@ def run_workflow(workflow_id):
         except Exception:
             final_output = None
 
+    if isinstance(final_output, dict):
+        final_output["elapsed_seconds"] = run_elapsed_seconds
+
+        branch_elapsed_seconds = {}
+        terminals = final_output.get("terminals")
+        if isinstance(terminals, list):
+            for terminal in terminals:
+                if not isinstance(terminal, dict):
+                    continue
+                terminal_id = str(terminal.get("id", "")).strip()
+                if not terminal_id:
+                    continue
+
+                terminal_ts = None
+                for tr in reversed(traces):
+                    if not isinstance(tr, dict):
+                        continue
+                    if str(tr.get("id", "")).strip() != terminal_id:
+                        continue
+                    raw_ts = tr.get("ts")
+                    if isinstance(raw_ts, (int, float)):
+                        terminal_ts = float(raw_ts)
+                    break
+
+                if terminal_ts is None:
+                    branch_elapsed_seconds[terminal_id] = None
+                    continue
+
+                branch_elapsed_seconds[terminal_id] = round(max(terminal_ts - run_started_at_epoch, 0.0), 3)
+
+        final_output["branch_elapsed_seconds"] = branch_elapsed_seconds
+
+        try:
+            with open(final_output_path, "w", encoding="utf-8") as f:
+                json.dump(final_output, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     output = result.stderr + result.stdout
+    if isinstance(final_output, dict):
+        final_output_text = json.dumps(final_output, ensure_ascii=False)
+        if result.stderr and result.stderr.strip():
+            output = result.stderr.strip() + "\n" + final_output_text
+        else:
+            output = final_output_text
 
     if result.returncode != 0:
         return jsonify({

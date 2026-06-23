@@ -16,6 +16,7 @@ import SortNode, { SortPropsForm } from './SortNode';
 import SwitchNode, { SwitchPropsForm } from './SwitchNode';
 import OpenaiResponsesNode, { OpenaiResponsesPropsForm } from './OpenaiResponsesNode';
 import CalculatorNode, { CalculatorPropsForm } from './CalculatorNode';
+import MapNode, { MapPropsForm } from './MapNode';
 import WebhookNode, { WebhookPropsForm } from './WebhookNode';
 import TelegramSendMessageNode, { TelegramSendMessagePropsForm } from './TelegramSendMessageNode';
 
@@ -39,6 +40,7 @@ export const nodeTypes = {
   switch: SwitchNode,
   openai_responses: OpenaiResponsesNode,
   calculator: CalculatorNode,
+  map: MapNode,
   webhook: WebhookNode,
   telegram_send_message: TelegramSendMessageNode
 };
@@ -297,6 +299,30 @@ export const NODE_META = {
       include_other_input_fields: true,
     }),
     PropsForm: CalculatorPropsForm,
+  },
+  map: {
+    label: 'Map',
+    icon: '🗺️',
+    description: 'Map input value to output by conditions',
+    inputs: 1,
+    outputs: 1,
+    defaultConfig: () => ({
+      output_key: 'mapped_value',
+      input_value_mode: 'variable',
+      input_source: '${value}',
+      input_data_type: 'string',
+      rules: [
+        {
+          operator: 'equals',
+          compare_value: '',
+          value_mode: 'literal',
+          mapped_value: '',
+        },
+      ],
+      default: null,
+      include_other_input_fields: true,
+    }),
+    PropsForm: MapPropsForm,
   },
   webhook: {
     label: 'Webhook',

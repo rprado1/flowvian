@@ -6,7 +6,9 @@ from app.nodes.base import BaseNode
 class SwitchNode(BaseNode):
     NODE_TYPE = "switch"
 
-    _EXACT_PLACEHOLDER_RE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+    _EXACT_ITEM_PLACEHOLDER_RE = re.compile(r"^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+    _EXACT_GLOBAL_PLACEHOLDER_RE = re.compile(r"^@\{([A-Za-z_][A-Za-z0-9_]*)\}$")
+    _EXACT_SECRET_PLACEHOLDER_RE = re.compile(r"^#\{([A-Za-z_][A-Za-z0-9_]*)\}$")
     _TYPES = ("string", "number", "boolean", "object", "array")
     _OPERATORS_BY_TYPE = {
         "string": (
@@ -55,11 +57,18 @@ class SwitchNode(BaseNode):
     }
 
     @classmethod
-    def _parse_placeholder_name(cls, text: str) -> str:
-        match = cls._EXACT_PLACEHOLDER_RE.fullmatch(str(text or "").strip())
-        if not match:
-            return ""
-        return match.group(1)
+    def _parse_input_reference(cls, text: str) -> tuple[str, str]:
+        raw = str(text or "").strip()
+        item_match = cls._EXACT_ITEM_PLACEHOLDER_RE.fullmatch(raw)
+        if item_match:
+            return ("item", item_match.group(1))
+        global_match = cls._EXACT_GLOBAL_PLACEHOLDER_RE.fullmatch(raw)
+        if global_match:
+            return ("global", global_match.group(1))
+        secret_match = cls._EXACT_SECRET_PLACEHOLDER_RE.fullmatch(raw)
+        if secret_match:
+            return ("secret", secret_match.group(1))
+        return ("", "")
 
     @classmethod
     def _normalize_type(cls, raw_type) -> str:
@@ -90,7 +99,8 @@ class SwitchNode(BaseNode):
         for idx, raw in enumerate(raw_routes):
             route = raw if isinstance(raw, dict) else {}
             name = str(route.get("name", f"Route {idx + 1}")).strip() or f"Route {idx + 1}"
-            cond = route.get("condition") if isinstance(route.get("condition"), dict) else {}
+            raw_cond = route.get("condition")
+            cond = raw_cond if isinstance(raw_cond, dict) else {}
 
             input_expr = str(cond.get("input", "")).strip()
             raw_data_type = str(cond.get("data_type", "string")).strip().lower()
@@ -99,12 +109,14 @@ class SwitchNode(BaseNode):
             compare_value = cond.get("compare_value", "")
             compare_raw = "" if compare_value is None else str(compare_value)
 
+            input_scope, input_name = cls._parse_input_reference(input_expr)
             routes.append(
                 {
                     "name": name,
                     "output": f"route_{idx + 1}",
                     "input_expr": input_expr,
-                    "input_name": cls._parse_placeholder_name(input_expr),
+                    "input_scope": input_scope,
+                    "input_name": input_name,
                     "raw_data_type": raw_data_type,
                     "data_type": data_type,
                     "operator": operator,
@@ -131,7 +143,9 @@ class SwitchNode(BaseNode):
                 errors.append(f"switch: {label} name is required")
 
             if not route["input_name"]:
-                errors.append(f"switch: {label} input must be a variable placeholder like ${{MY_VAR}}")
+                errors.append(
+                    f"switch: {label} input must be a variable placeholder like ${{MY_VAR}}, @{{MY_GLOBAL}}, or #{{MY_SECRET}}"
+                )
 
             raw_data_type = route["raw_data_type"]
             data_type = route["data_type"]
@@ -159,6 +173,7 @@ class SwitchNode(BaseNode):
             {
                 "name": route["name"],
                 "output": route["output"],
+                "input_scope": route["input_scope"],
                 "input_name": route["input_name"],
                 "data_type": route["data_type"],
                 "operator": route["operator"],
@@ -182,14 +197,24 @@ class SwitchNode(BaseNode):
             "    _switch_item_checks = []",
             "    for _switch_cfg in _switch_routes:",
             "        _switch_output = str(_switch_cfg.get('output', ''))",
+            "        _switch_input_scope = _switch_cfg.get('input_scope', 'item')",
             "        _switch_input_name = _switch_cfg.get('input_name', '')",
             "        _switch_data_type = _switch_cfg.get('data_type', 'string')",
             "        _switch_operator = _switch_cfg.get('operator', '')",
             "        _switch_compare_raw = _switch_cfg.get('compare_raw', '')",
             "",
-            "        if _switch_input_name not in _item:",
-            "            raise ValueError(f\"switch: missing variable '{_switch_input_name}' in input item\")",
-            "        _switch_left = _item.get(_switch_input_name)",
+            "        if _switch_input_scope == 'global':",
+            "            if _switch_input_name not in _global_store:",
+            "                raise ValueError(f\"switch: missing global variable '{_switch_input_name}'\")",
+            "            _switch_left = _global_store.get(_switch_input_name)",
+            "        elif _switch_input_scope == 'secret':",
+            "            if _switch_input_name not in _secret_store:",
+            "                raise ValueError(f\"switch: missing secret '{_switch_input_name}'\")",
+            "            _switch_left = _secret_store.get(_switch_input_name)",
+            "        else:",
+            "            if _switch_input_name not in _item:",
+            "                raise ValueError(f\"switch: missing variable '{_switch_input_name}' in input item\")",
+            "            _switch_left = _item.get(_switch_input_name)",
             "        _switch_needs_compare = _switch_operator not in _switch_unary_ops",
             "        _switch_right = None",
             "        if _switch_needs_compare:",
@@ -199,7 +224,17 @@ class SwitchNode(BaseNode):
             "                if _switch_right_name not in _item:",
             "                    raise ValueError(f\"switch: missing variable '{_switch_right_name}' in compare_value\")",
             "                _switch_right = _item.get(_switch_right_name)",
-            "            elif _TPL_VAR_RE.search(_switch_compare_raw):",
+            "            elif _GLOBAL_VAR_RE.fullmatch(_switch_compare_raw):",
+            "                _switch_right_name = _GLOBAL_VAR_RE.fullmatch(_switch_compare_raw).group(1)",
+            "                if _switch_right_name not in _global_store:",
+            "                    raise ValueError(f\"switch: missing global variable '{_switch_right_name}' in compare_value\")",
+            "                _switch_right = _global_store.get(_switch_right_name)",
+            "            elif _SECRET_VAR_RE.fullmatch(_switch_compare_raw):",
+            "                _switch_right_name = _SECRET_VAR_RE.fullmatch(_switch_compare_raw).group(1)",
+            "                if _switch_right_name not in _secret_store:",
+            "                    raise ValueError(f\"switch: missing secret '{_switch_right_name}' in compare_value\")",
+            "                _switch_right = _secret_store.get(_switch_right_name)",
+            "            elif _TPL_VAR_RE.search(_switch_compare_raw) or _GLOBAL_VAR_RE.search(_switch_compare_raw) or _SECRET_VAR_RE.search(_switch_compare_raw):",
             "                _switch_right = _resolve_template(_switch_compare_raw, _item)",
             "            else:",
             "                _switch_right = _switch_compare_raw",

@@ -31,6 +31,7 @@ const NODE_CATEGORIES = {
   aggregate: 'Data',
   sort: 'Data',
   calculator: 'Data',
+  map: 'Data',
   telegram_send_message: 'Network',
 };
 

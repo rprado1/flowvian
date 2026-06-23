@@ -14,6 +14,7 @@ class SetVariablesNode(BaseNode):
 
     NODE_TYPE = "set_variables"
     _TPL_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+    _GLOBAL_VAR_RE = re.compile(r"@\{([A-Za-z_][A-Za-z0-9_]*)\}")
     _PATH_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\[[0-9]+\]|\.[A-Za-z_][A-Za-z0-9_]*)*$")
     _SECRET_PREFIX = "enc:v1:"
 
@@ -30,7 +31,9 @@ class SetVariablesNode(BaseNode):
 
     @classmethod
     def _contains_placeholder(cls, value) -> bool:
-        return isinstance(value, str) and cls._TPL_VAR_RE.search(value) is not None
+        if not isinstance(value, str):
+            return False
+        return "${" in value or "@{" in value or "#{" in value
 
     @classmethod
     def _normalize_mode(cls, raw_mode, raw_value) -> str:
@@ -42,6 +45,13 @@ class SetVariablesNode(BaseNode):
         if mode in ("literal", "template", "path"):
             return mode
         return "literal"
+
+    @staticmethod
+    def _normalize_scope(raw_scope) -> str:
+        if raw_scope is None:
+            return "local"
+        scope = str(raw_scope).strip().lower()
+        return scope or "local"
 
     @staticmethod
     def _parse_number(value):
@@ -126,6 +136,11 @@ class SetVariablesNode(BaseNode):
                 errors.append(f"set_variables: item {i} has invalid value_mode '{value_mode}'")
                 continue
 
+            scope = self._normalize_scope(item.get("scope"))
+            if scope not in ("local", "global"):
+                errors.append(f"set_variables: item {i} has invalid scope '{scope}'")
+                continue
+
             if var_type == "secret" and value_mode != "literal":
                 errors.append(f"set_variables: item {i} type 'secret' only supports literal mode")
                 continue
@@ -176,12 +191,14 @@ class SetVariablesNode(BaseNode):
                 value = item.get("value", "")
                 var_type = self._normalize_type(item.get("type", "string"))
                 value_mode = self._normalize_mode(item.get("value_mode"), value)
+                scope = self._normalize_scope(item.get("scope"))
                 raw_value = "" if value is None else str(value)
                 missing_var_msg = f"set_variables: key '{key}' references missing variable "
 
                 lines.append(f"_sv_key = {repr(key)}")
                 lines.append(f"_sv_type = {repr(var_type)}")
                 lines.append(f"_sv_mode = {repr(value_mode)}")
+                lines.append(f"_sv_scope = {repr(scope)}")
                 lines.append(f"_sv_raw = {repr(raw_value)}")
                 lines.append("if _sv_mode == 'path':")
                 lines.append("    _sv_src = _resolve_item_path(_item, _sv_raw)")
@@ -189,14 +206,21 @@ class SetVariablesNode(BaseNode):
                 lines.append("    if _sv_type == 'string':")
                 lines.append("        _sv_src = _resolve_template(_sv_raw, _item)")
                 lines.append("    else:")
-                lines.append("        _sv_m = _TPL_VAR_RE.fullmatch(_sv_raw)")
-                lines.append("        if _sv_m:")
-                lines.append("            _sv_name = _sv_m.group(1)")
+                lines.append("        _sv_m_local = _TPL_VAR_RE.fullmatch(_sv_raw)")
+                lines.append("        if _sv_m_local:")
+                lines.append("            _sv_name = _sv_m_local.group(1)")
                 lines.append("            if _sv_name not in _item:")
                 lines.append("                raise ValueError(" + repr(missing_var_msg) + " + _sv_name)")
                 lines.append("            _sv_src = _item.get(_sv_name)")
                 lines.append("        else:")
-                lines.append("            _sv_src = _resolve_template(_sv_raw, _item)")
+                lines.append("            _sv_m_global = _GLOBAL_VAR_RE.fullmatch(_sv_raw)")
+                lines.append("            if _sv_m_global:")
+                lines.append("                _sv_name = _sv_m_global.group(1)")
+                lines.append("                if _sv_name not in _global_store:")
+                lines.append("                    raise ValueError(f\"set_variables: key '{_sv_key}' references missing global variable {_sv_name}\")")
+                lines.append("                _sv_src = _global_store.get(_sv_name)")
+                lines.append("            else:")
+                lines.append("                _sv_src = _resolve_template(_sv_raw, _item)")
                 lines.append("else:")
                 lines.append("    _sv_src = _sv_raw")
 
@@ -255,6 +279,11 @@ class SetVariablesNode(BaseNode):
                 lines.append("        _out[_sv_key] = _sv_parsed")
                 lines.append("else:")
                 lines.append("    _out[_sv_key] = str(_sv_src)")
+                lines.append("if _sv_scope == 'global':")
+                lines.append("    if _sv_type == 'secret':")
+                lines.append("        _global_store[_sv_key] = _secret_store.get(_sv_key)")
+                lines.append("    elif _sv_key in _out:")
+                lines.append("        _global_store[_sv_key] = _out.get(_sv_key)")
             code_body = "\n".join(lines)
         
         include_flag = self.config.get("include_other_input_fields", False)

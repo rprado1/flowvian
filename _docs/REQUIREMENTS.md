@@ -58,4 +58,6 @@
 
 # Fase 5
 
-- 1.- Requiero una forma de exportar e importar la plantilla de un workflow, considerar que algunos pasos tienen secretos, revisa cual es la mejor forma de realizarlo
+- 1.- Requiero en el nodo set variables e pueda definir variables globales (agregar encima del selector donde estan otros tipos: Literal, Template, Path) otro selecot (Local, GLobal) por defecto todas las variables son locales, una vez definida un avaraible global se podra usar en cualquier nodo usando el el template @{VAR}
+- 2.- Requiero crear un nodo map, debe permitirme ingresar el valor de la varaible nueva, debe permitirme ingresar la variable de entrada, debe permitirme registrar las opciones de valores a los que se mapeará (pude ser litera, variable, secreto, global) si la variable cumple una condicion
+- 2.- Requiero una forma de exportar e importar la plantilla de un workflow

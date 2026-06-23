@@ -28,6 +28,67 @@ export default function EditorPage() {
   const [buildLog, setBuildLog] = useState(null);
   const [runStateMsg, setRunStateMsg] = useState('');
 
+  const handleExportTemplate = async () => {
+    if (!workflowId) return toast.error('Open a workspace first');
+    try {
+      await saveGraph(nodes, edges);
+      const payload = await api('GET', `/api/workflows/${workflowId}/template/export`);
+      const workflowName = String(payload?.workflow?.name || 'workflow').trim() || 'workflow';
+      const safe = workflowName.replace(/[^a-z0-9-_]+/gi, '_').replace(/^_+|_+$/g, '') || 'workflow';
+      const fileName = `workflow-template-${safe}.json`;
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Template exported');
+    } catch (e) {
+      toast.error(e.message || 'Export failed');
+    }
+  };
+
+  const handleImportTemplate = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.onchange = async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        let payload;
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          toast.error('Invalid JSON file');
+          return;
+        }
+        const res = await api('POST', '/api/workflows/template/import', payload);
+        const warnings = Array.isArray(res?.warnings) ? res.warnings : [];
+        if (warnings.length) {
+          toast.warning(`Imported with warnings (${warnings.length})`);
+        } else {
+          toast.success('Template imported');
+        }
+        const nextId = res?.workflow?.id;
+        if (nextId) {
+          navigate(`/editor/${nextId}`);
+        }
+      } catch (e) {
+        if (Array.isArray(e?.detail?.errors) && e.detail.errors.length) {
+          toast.error(e.detail.errors.slice(0, 2).join(' | '));
+        } else {
+          toast.error(e.message || 'Import failed');
+        }
+      }
+    };
+    input.click();
+  };
+
   useEffect(() => {
     let mounted = true;
 
@@ -169,6 +230,8 @@ export default function EditorPage() {
         onRun={handleRun}
         onStopRun={handleStopRun}
         onBuild={handleBuild}
+        onExportTemplate={handleExportTemplate}
+        onImportTemplate={handleImportTemplate}
         running={running}
         runStateMsg={runStateMsg}
         building={building}
