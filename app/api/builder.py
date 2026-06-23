@@ -4,6 +4,8 @@ import json
 import os
 import subprocess
 import sys
+import threading
+import time
 import traceback
 import uuid
 
@@ -16,6 +18,10 @@ builder_bp = Blueprint("builder", __name__)
 # Maximum wall-clock time for /run workflow execution.
 # Increased to support Wait nodes with delays > 30 seconds.
 RUN_TIMEOUT_SECONDS = 300
+RUN_WEBHOOK_WAIT_SECONDS = 90
+
+_RUN_LOCK = threading.Lock()
+_RUN_STATE: dict[str, dict] = {}
 
 
 def data_dir():
@@ -208,6 +214,20 @@ def run_workflow(workflow_id):
     run_script_path = os.path.join(wf_output_dir, "_run.py")
     trace_path = os.path.join(wf_output_dir, "_trace.json")
     final_output_path = os.path.join(wf_output_dir, "_final_output.json")
+    stop_path = os.path.join(wf_output_dir, "_stop.json")
+    state_path = os.path.join(wf_output_dir, "_run_state.json")
+
+    if os.path.exists(stop_path):
+        try:
+            os.remove(stop_path)
+        except OSError:
+            pass
+
+    if os.path.exists(state_path):
+        try:
+            os.remove(state_path)
+        except OSError:
+            pass
 
     with open(run_script_path, "w", encoding="utf-8") as f:
         f.write(script)
@@ -215,14 +235,38 @@ def run_workflow(workflow_id):
     env = os.environ.copy()
     env["WORKFLOW_TRACE_PATH"] = trace_path
     env["WORKFLOW_FINAL_OUTPUT_PATH"] = final_output_path
+    env["WORKFLOW_WEBHOOK_WAIT_SECONDS"] = str(RUN_WEBHOOK_WAIT_SECONDS)
+    env["WORKFLOW_STOP_PATH"] = stop_path
+    env["WORKFLOW_RUN_STATE_PATH"] = state_path
+
+    run_started_at = time.perf_counter()
+    run_started_at_epoch = time.time()
 
     try:
-        result = subprocess.run(
+        with _RUN_LOCK:
+            if workflow_id in _RUN_STATE:
+                return jsonify({"error": "A run is already in progress for this workflow"}), 409
+
+        proc = subprocess.Popen(
             [sys.executable, run_script_path],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=RUN_TIMEOUT_SECONDS,
             env=env,
+        )
+
+        with _RUN_LOCK:
+            _RUN_STATE[workflow_id] = {
+                "process": proc,
+                "stop_path": stop_path,
+            }
+
+        stdout, stderr = proc.communicate(timeout=RUN_TIMEOUT_SECONDS)
+        result = subprocess.CompletedProcess(
+            args=[sys.executable, run_script_path],
+            returncode=proc.returncode,
+            stdout=stdout,
+            stderr=stderr,
         )
     except subprocess.TimeoutExpired:
         return jsonify({
@@ -236,6 +280,11 @@ def run_workflow(workflow_id):
             "traces": [],
             "output": "",
         }), 500
+    finally:
+        with _RUN_LOCK:
+            _RUN_STATE.pop(workflow_id, None)
+
+    run_elapsed_seconds = round(max(time.perf_counter() - run_started_at, 0.0), 3)
 
     traces = []
     if os.path.exists(trace_path):
@@ -253,7 +302,51 @@ def run_workflow(workflow_id):
         except Exception:
             final_output = None
 
+    if isinstance(final_output, dict):
+        final_output["elapsed_seconds"] = run_elapsed_seconds
+
+        branch_elapsed_seconds = {}
+        terminals = final_output.get("terminals")
+        if isinstance(terminals, list):
+            for terminal in terminals:
+                if not isinstance(terminal, dict):
+                    continue
+                terminal_id = str(terminal.get("id", "")).strip()
+                if not terminal_id:
+                    continue
+
+                terminal_ts = None
+                for tr in reversed(traces):
+                    if not isinstance(tr, dict):
+                        continue
+                    if str(tr.get("id", "")).strip() != terminal_id:
+                        continue
+                    raw_ts = tr.get("ts")
+                    if isinstance(raw_ts, (int, float)):
+                        terminal_ts = float(raw_ts)
+                    break
+
+                if terminal_ts is None:
+                    branch_elapsed_seconds[terminal_id] = None
+                    continue
+
+                branch_elapsed_seconds[terminal_id] = round(max(terminal_ts - run_started_at_epoch, 0.0), 3)
+
+        final_output["branch_elapsed_seconds"] = branch_elapsed_seconds
+
+        try:
+            with open(final_output_path, "w", encoding="utf-8") as f:
+                json.dump(final_output, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+
     output = result.stderr + result.stdout
+    if isinstance(final_output, dict):
+        final_output_text = json.dumps(final_output, ensure_ascii=False)
+        if result.stderr and result.stderr.strip():
+            output = result.stderr.strip() + "\n" + final_output_text
+        else:
+            output = final_output_text
 
     if result.returncode != 0:
         return jsonify({
@@ -268,6 +361,49 @@ def run_workflow(workflow_id):
         "output": output.strip() or None,
         "final_output": final_output,
     })
+
+
+@builder_bp.route("/<workflow_id>/run/stop", methods=["POST"])
+def stop_run_workflow(workflow_id):
+    with _RUN_LOCK:
+        state = _RUN_STATE.get(workflow_id)
+
+    if not state:
+        return jsonify({"stopped": False, "message": "No run in progress"})
+
+    stop_path = state.get("stop_path")
+    if stop_path:
+        try:
+            with open(stop_path, "w", encoding="utf-8") as f:
+                json.dump({"stop": True}, f)
+        except Exception:
+            pass
+
+    return jsonify({
+        "stopped": True,
+        "message": "Stop requested. Waiting for current run to finish gracefully.",
+    })
+
+
+@builder_bp.route("/<workflow_id>/run/state", methods=["GET"])
+def run_state_workflow(workflow_id):
+    wf_output_dir = os.path.join(output_dir(), workflow_id)
+    state_path = os.path.join(wf_output_dir, "_run_state.json")
+
+    if os.path.exists(state_path):
+        try:
+            with open(state_path, "r", encoding="utf-8") as f:
+                state = json.load(f)
+            if isinstance(state, dict):
+                return jsonify(state)
+        except Exception:
+            pass
+
+    with _RUN_LOCK:
+        if workflow_id in _RUN_STATE:
+            return jsonify({"status": "running", "phase": "starting"})
+
+    return jsonify({"status": "idle"})
 
 
 # ---------------------------------------------------------------------------

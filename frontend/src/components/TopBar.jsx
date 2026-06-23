@@ -2,9 +2,9 @@ import { Button } from '@/components/ui/button';
 import { useWorkflow } from '@/context/WorkflowContext';
 
 export default function TopBar({
-  onRename, onPreview, onSave, onRun, onBuild,
+  onRename, onPreview, onSave, onRun, onStopRun, onBuild, onExportTemplate, onImportTemplate,
   onBackToWorkspaces,
-  running, building,
+  running, runStateMsg, building,
 }) {
   const { currentWfName, currentWfId } = useWorkflow();
 
@@ -31,20 +31,32 @@ export default function TopBar({
 
       <div className="flex-1" />
 
+      {running && !!runStateMsg && (
+        <span className="text-xs text-muted-foreground max-w-[420px] truncate" title={runStateMsg}>
+          {runStateMsg}
+        </span>
+      )}
+
       <Button variant="outline" size="sm" onClick={onPreview} disabled={!currentWfId}>
         Preview Code
       </Button>
       <Button variant="outline" size="sm" onClick={onSave} disabled={!currentWfId}>
         Save
       </Button>
+      <Button variant="outline" size="sm" onClick={onExportTemplate} disabled={!currentWfId}>
+        Export Template
+      </Button>
+      <Button variant="outline" size="sm" onClick={onImportTemplate} disabled={!currentWfId}>
+        Import Template
+      </Button>
       <Button
         variant="outline"
         size="sm"
-        onClick={onRun}
-        disabled={!currentWfId || running}
+        onClick={running ? onStopRun : onRun}
+        disabled={!currentWfId}
         className="text-[var(--accent-green)] border-[var(--accent-green)] hover:bg-[var(--accent-green)]/10"
       >
-        {running ? 'Running…' : '▶ Run'}
+        {running ? '■ Stop' : '▶ Run'}
       </Button>
       <Button
         size="sm"

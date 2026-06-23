@@ -8,11 +8,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 export default function HttpRequestNode({ data }) {
   const method = (data.config?.method || 'GET').toUpperCase();
   const url = data.config?.url || 'https://api.example.com';
+  const outputVar = data.config?.output_var || 'http_result';
   return (
     <BaseNode icon="🌐" instanceName={data.instanceName} inputs={1} outputs={1}>
       <div className="text-xs">
         <div className="font-semibold">{method}</div>
         <div className="text-muted-foreground truncate max-w-[160px]">{url}</div>
+        <div className="text-muted-foreground truncate max-w-[160px]">→ {outputVar}</div>
       </div>
     </BaseNode>
   );
@@ -56,6 +58,15 @@ export function HttpRequestPropsForm({ config, onChange }) {
   return (
     <div className="space-y-3">
       <div className="prop-group">
+        <Label className="text-xs font-medium">Output Variable</Label>
+        <Input
+          value={config.output_var ?? 'http_result'}
+          placeholder="http_result"
+          onChange={e => onChange({ ...config, output_var: e.target.value.trim() || 'http_result' })}
+        />
+      </div>
+
+      <div className="prop-group">
         <Label className="text-xs font-medium">Method</Label>
         <select
           value={method}
@@ -71,9 +82,12 @@ export function HttpRequestPropsForm({ config, onChange }) {
         <Label className="text-xs font-medium">URL</Label>
         <Input
           value={config.url || ''}
-          placeholder="https://api.example.com/users"
+          placeholder="${MT5_API_URL}/market-data/bars"
           onChange={e => onChange({ ...config, url: e.target.value })}
         />
+        <p className="text-xs text-muted-foreground mt-1">
+          Supports URL templates, e.g. ${'{'}MT5_API_URL{'}'}/market-data/bars.
+        </p>
         {method === 'GET' && (
           <p className="text-xs text-muted-foreground mt-1">
             For GET, define query string in Query Params section.

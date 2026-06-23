@@ -24,7 +24,7 @@ export function TimeDeltaFields({ config, onChange, verb = 'add' }) {
         <Label>Input datetime variable</Label>
         <Input
           value={config.input_var ?? ''}
-          placeholder="variable name"
+          placeholder="variable name or @{GLOBAL_VAR}"
           onChange={e => onChange({ ...config, input_var: e.target.value.trim() })}
         />
       </div>
@@ -32,10 +32,10 @@ export function TimeDeltaFields({ config, onChange, verb = 'add' }) {
         <div key={f} className="prop-group">
           <Label>{f.charAt(0).toUpperCase() + f.slice(1)} to {verb}</Label>
           <Input
-            type="number"
-            min={0}
-            value={config[f] ?? 0}
-            onChange={e => onChange({ ...config, [f]: parseFloat(e.target.value) || 0 })}
+            type="text"
+            value={config[f] ?? '0'}
+            placeholder="0 o ${mi_variable}"
+            onChange={e => onChange({ ...config, [f]: e.target.value })}
           />
         </div>
       ))}

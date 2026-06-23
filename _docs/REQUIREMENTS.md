@@ -55,4 +55,9 @@
   {"role": "user", "content": "how can I solve 8x + 7 = -23"},
   ]), instructions, temperature
 - 3.- Requiero crear un nodo llamado calculator, con operaciones: suma, resta, multiplicacion, division, abs, max, min, floor, ceil, x2, solo se permite operaciones entre dos variables y una vairable, debe haber inputs para ingresar valores o variables (${} o #{}), debe haber un selector de operacion, debe haber un inout taex para definicir el nombre de la variable, debe permitirme agregar varios variables a caclular similar a set variable node
-- 4. Requier crear un nodo que me permite enviar un mensaje a un canal de telegram, usara el TELEGRAM_CHAT_ID, el access token y usara https://api.telegram.org
+
+# Fase 5
+
+- 1.- Requiero en el nodo set variables e pueda definir variables globales (agregar encima del selector donde estan otros tipos: Literal, Template, Path) otro selecot (Local, GLobal) por defecto todas las variables son locales, una vez definida un avaraible global se podra usar en cualquier nodo usando el el template @{VAR}
+- 2.- Requiero crear un nodo map, debe permitirme ingresar el valor de la varaible nueva, debe permitirme ingresar la variable de entrada, debe permitirme registrar las opciones de valores a los que se mapeará (pude ser litera, variable, secreto, global) si la variable cumple una condicion
+- 2.- Requiero una forma de exportar e importar la plantilla de un workflow

@@ -9,6 +9,12 @@ from app.db.manager import (
     get_workflow_graph,
     save_workflow_graph,
 )
+from app.services.template_service import (
+    MAX_TEMPLATE_BYTES,
+    build_template_payload,
+    import_template_as_workflow,
+    validate_and_sanitize_template,
+)
 from app.security.secrets_crypto import (
     SECRET_MASK,
     encrypt_secret_value,
@@ -228,3 +234,50 @@ def save_graph(workflow_id):
 
     save_workflow_graph(data_dir(), workflow_id, encrypted_nodes, edges)
     return jsonify({"ok": True})
+
+
+@workflows_bp.route("/<workflow_id>/template/export", methods=["GET"])
+def export_template(workflow_id):
+    meta = get_workflow_meta(data_dir(), workflow_id)
+    if not meta:
+        return jsonify({"error": "not found"}), 404
+
+    graph = get_workflow_graph(data_dir(), workflow_id)
+    payload = build_template_payload(meta, graph)
+    return jsonify(payload)
+
+
+@workflows_bp.route("/template/import", methods=["POST"])
+def import_template():
+    payload = None
+
+    file_obj = request.files.get("file") if request.files else None
+    if file_obj is not None:
+        raw_bytes = file_obj.read(MAX_TEMPLATE_BYTES + 1)
+        if len(raw_bytes) > MAX_TEMPLATE_BYTES:
+            return jsonify({"error": f"template file is too large (max {MAX_TEMPLATE_BYTES} bytes)"}), 413
+        try:
+            import json
+
+            payload = json.loads(raw_bytes.decode("utf-8"))
+        except Exception as exc:
+            return jsonify({"error": f"invalid template JSON file: {exc}"}), 400
+    else:
+        if request.content_length and request.content_length > MAX_TEMPLATE_BYTES:
+            return jsonify({"error": f"template payload is too large (max {MAX_TEMPLATE_BYTES} bytes)"}), 413
+        payload = request.get_json(force=True, silent=True)
+        if payload is None:
+            return jsonify({"error": "template payload is required"}), 400
+
+    sanitized, errors, warnings = validate_and_sanitize_template(payload)
+    if errors:
+        return jsonify({"error": "template validation failed", "errors": errors}), 422
+    if sanitized is None:
+        return jsonify({"error": "template validation failed", "errors": ["invalid template payload"]}), 422
+
+    created = import_template_as_workflow(data_dir(), sanitized)
+    return jsonify({
+        "ok": True,
+        "workflow": created,
+        "warnings": warnings,
+    }), 201

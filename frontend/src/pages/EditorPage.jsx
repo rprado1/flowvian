@@ -26,6 +26,68 @@ export default function EditorPage() {
   const [runFinalOutput, setRunFinalOutput] = useState(null);
   const [showRun, setShowRun] = useState(false);
   const [buildLog, setBuildLog] = useState(null);
+  const [runStateMsg, setRunStateMsg] = useState('');
+
+  const handleExportTemplate = async () => {
+    if (!workflowId) return toast.error('Open a workspace first');
+    try {
+      await saveGraph(nodes, edges);
+      const payload = await api('GET', `/api/workflows/${workflowId}/template/export`);
+      const workflowName = String(payload?.workflow?.name || 'workflow').trim() || 'workflow';
+      const safe = workflowName.replace(/[^a-z0-9-_]+/gi, '_').replace(/^_+|_+$/g, '') || 'workflow';
+      const fileName = `workflow-template-${safe}.json`;
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Template exported');
+    } catch (e) {
+      toast.error(e.message || 'Export failed');
+    }
+  };
+
+  const handleImportTemplate = async () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.onchange = async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        let payload;
+        try {
+          payload = JSON.parse(text);
+        } catch {
+          toast.error('Invalid JSON file');
+          return;
+        }
+        const res = await api('POST', '/api/workflows/template/import', payload);
+        const warnings = Array.isArray(res?.warnings) ? res.warnings : [];
+        if (warnings.length) {
+          toast.warning(`Imported with warnings (${warnings.length})`);
+        } else {
+          toast.success('Template imported');
+        }
+        const nextId = res?.workflow?.id;
+        if (nextId) {
+          navigate(`/editor/${nextId}`);
+        }
+      } catch (e) {
+        if (Array.isArray(e?.detail?.errors) && e.detail.errors.length) {
+          toast.error(e.detail.errors.slice(0, 2).join(' | '));
+        } else {
+          toast.error(e.message || 'Import failed');
+        }
+      }
+    };
+    input.click();
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -79,7 +141,33 @@ export default function EditorPage() {
     if (!workflowId) return toast.error('Open a workspace first');
     await saveGraph(nodes, edges);
     setRunning(true);
+    setRunStateMsg('Starting run...');
     toast.info('Executing workflow…');
+
+    const pollState = async () => {
+      try {
+        const st = await api('GET', `/api/workflows/${workflowId}/run/state`);
+        if (st?.status === 'running') {
+          if (st.phase === 'waiting_webhook') {
+            const method = st.method || 'POST';
+            const host = st.host || '127.0.0.1';
+            const port = st.port || '';
+            const path = st.path || '/webhook';
+            setRunStateMsg(`Waiting webhook: ${method} http://${host}${port ? `:${port}` : ''}${path}`);
+          } else if (st.phase === 'executing_workflow') {
+            setRunStateMsg('Webhook received, executing workflow...');
+          } else {
+            setRunStateMsg('Running...');
+          }
+        }
+      } catch {
+        // ignore state polling errors
+      }
+    };
+
+    const stateTimer = window.setInterval(pollState, 1000);
+    void pollState();
+
     try {
       const data = await api('POST', `/api/workflows/${workflowId}/run`);
       setRunTraces(data.traces || []);
@@ -91,7 +179,20 @@ export default function EditorPage() {
     } catch (e) {
       toast.error(e.message);
     } finally {
+      window.clearInterval(stateTimer);
       setRunning(false);
+      setRunStateMsg('');
+    }
+  };
+
+  const handleStopRun = async () => {
+    if (!workflowId) return;
+    try {
+      const data = await api('POST', `/api/workflows/${workflowId}/run/stop`);
+      toast.info(data?.message || 'Stop requested');
+      setRunStateMsg('Stopping run...');
+    } catch (e) {
+      toast.error(e.message);
     }
   };
 
@@ -127,8 +228,12 @@ export default function EditorPage() {
         onPreview={handlePreview}
         onSave={handleSave}
         onRun={handleRun}
+        onStopRun={handleStopRun}
         onBuild={handleBuild}
+        onExportTemplate={handleExportTemplate}
+        onImportTemplate={handleImportTemplate}
         running={running}
+        runStateMsg={runStateMsg}
         building={building}
       />
 

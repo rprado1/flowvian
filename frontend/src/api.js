@@ -11,7 +11,7 @@ export async function api(method, url, body = null) {
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(json.error || `HTTP ${res.status}`);
-    err.detail = json.log || null;
+    err.detail = json;
     throw err;
   }
   return json;

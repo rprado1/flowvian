@@ -21,7 +21,7 @@ class CalculatorNode(BaseNode):
         "x2",
     }
     _UNARY_OPERATIONS = {"abs", "floor", "ceil", "x2"}
-    _PLACEHOLDER_RE = re.compile(r"(\$\{[A-Za-z_][A-Za-z0-9_]*\}|#\{[A-Za-z_][A-Za-z0-9_]*\})")
+    _PLACEHOLDER_RE = re.compile(r"(\$\{[A-Za-z_][A-Za-z0-9_]*\}|#\{[A-Za-z_][A-Za-z0-9_]*\}|@\{[A-Za-z_][A-Za-z0-9_]*\})")
 
     @classmethod
     def _is_unary_operation(cls, operation: str) -> bool:

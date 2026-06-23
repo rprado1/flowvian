@@ -1,7 +1,77 @@
 import json
+import re
 from urllib.parse import urlparse
 
+from typing import Optional, Tuple
+
 from app.nodes.base import BaseNode
+
+
+_URL_TEMPLATE_PREFIX_RE = re.compile(r"^(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|#\{[A-Za-z_][A-Za-z0-9_]*\}|@\{[A-Za-z_][A-Za-z0-9_]*\})")
+_PLACEHOLDER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _starts_with_url_template(value: str) -> bool:
+    return _URL_TEMPLATE_PREFIX_RE.match(value) is not None
+
+
+def _read_placeholder(text: str, start: int) -> Tuple[Optional[str], int]:
+    if text.startswith("${", start):
+        prefix_len = 2
+    elif text.startswith("#{", start):
+        prefix_len = 2
+    elif text.startswith("@{", start):
+        prefix_len = 2
+    else:
+        return None, start
+
+    end = text.find("}", start + prefix_len)
+    if end < 0:
+        return None, start
+
+    name = text[start + prefix_len:end]
+    if not _PLACEHOLDER_NAME_RE.fullmatch(name):
+        return None, start
+
+    return text[start : end + 1], end + 1
+
+
+def _quote_unquoted_placeholders(raw_json: str) -> str:
+    out: list[str] = []
+    i = 0
+    in_string = False
+    escaped = False
+
+    while i < len(raw_json):
+        ch = raw_json[i]
+
+        if in_string:
+            out.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+
+        placeholder, next_i = _read_placeholder(raw_json, i)
+        if placeholder is not None:
+            out.append(json.dumps(placeholder))
+            i = next_i
+            continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out)
 
 
 class HttpRequestNode(BaseNode):
@@ -17,8 +87,14 @@ class HttpRequestNode(BaseNode):
         url = str(self.config.get("url", "")).strip()
         if not url:
             errors.append("http_request: url cannot be empty")
-        elif not (url.startswith("http://") or url.startswith("https://")):
-            errors.append("http_request: url must start with http:// or https://")
+        elif not (
+            url.startswith("http://")
+            or url.startswith("https://")
+            or _starts_with_url_template(url)
+        ):
+            errors.append(
+                "http_request: url must start with http:// or https://, or with a template like ${VAR} / #{SECRET} / @{GLOBAL}"
+            )
 
         query_params = self.config.get("query_params", [])
         if not isinstance(query_params, list):
@@ -39,6 +115,12 @@ class HttpRequestNode(BaseNode):
                 errors.append("http_request: timeout_seconds must be between 1 and 120")
         except (TypeError, ValueError):
             errors.append("http_request: timeout_seconds must be a number")
+
+        output_var = str(self.config.get("output_var", "http_result")).strip()
+        if not output_var:
+            errors.append("http_request: output_var cannot be empty")
+        elif not output_var.isidentifier():
+            errors.append(f"http_request: output_var '{output_var}' is not a valid Python identifier")
 
         headers = self.config.get("headers", [])
         if isinstance(headers, dict):
@@ -66,9 +148,11 @@ class HttpRequestNode(BaseNode):
                 errors.append("http_request: body_raw_json is required for POST")
             else:
                 try:
-                    json.loads(body_raw_json)
+                    json.loads(_quote_unquoted_placeholders(body_raw_json))
                 except Exception:
-                    errors.append("http_request: body_raw_json must be valid JSON")
+                    errors.append(
+                        "http_request: body_raw_json must be valid JSON after placeholder replacement"
+                    )
         else:
             parsed = urlparse(url)
             if parsed.query:
@@ -83,6 +167,11 @@ class HttpRequestNode(BaseNode):
         body_raw_json = str(self.config.get("body_raw_json", "")).strip()
         query_params_config = self.config.get("query_params", [])
         headers_config = self.config.get("headers", [])
+        output_var = str(self.config.get("output_var", "http_result")).strip() or "http_result"
+        body_template_obj = None
+
+        if method == "POST" and body_raw_json:
+            body_template_obj = json.loads(_quote_unquoted_placeholders(body_raw_json))
 
         if isinstance(query_params_config, list):
             normalized_query_params = []
@@ -122,14 +211,16 @@ class HttpRequestNode(BaseNode):
             f"_http_url_template = {url!r}",
             f"_http_headers_template = {normalized_headers!r}",
             f"_http_timeout_seconds = {timeout_seconds!r}",
-            f"_http_body_raw_json = {body_raw_json!r}",
+            f"_http_body_template = {body_template_obj!r}",
             f"_http_query_params_template = {normalized_query_params!r}",
+            f"_http_output_var = {output_var!r}",
             "_out['http_method'] = _http_method",
             "_out['http_ok'] = False",
             "_out['http_status_code'] = None",
             "_out['http_response_headers'] = {}",
             "_out['http_response_body'] = None",
             "_out['http_error_message'] = None",
+            "_out[_http_output_var] = {'ok': False, 'status_code': None, 'response_headers': {}, 'response_body': None, 'error_message': None, 'url_resolved': None}",
             "try:",
             "    _resolved_url = _resolve_template(_http_url_template, _item)",
             "    if _http_method == 'GET' and _http_query_params_template:",
@@ -156,8 +247,7 @@ class HttpRequestNode(BaseNode):
             "",
             "    _body_obj = None",
             "    if _http_method == 'POST':",
-            "        _body_template = json.loads(_http_body_raw_json)",
-            "        _body_obj = _resolve_json_template(_body_template, _item)",
+            "        _body_obj = _resolve_json_template(_http_body_template, _item)",
             "",
             "    _result = _perform_http_request(",
             "        method=_http_method,",
@@ -173,6 +263,14 @@ class HttpRequestNode(BaseNode):
             "    _out['http_response_headers'] = _result['response_headers']",
             "    _out['http_response_body'] = _result['response_body']",
             "    _out['http_error_message'] = _result['error_message']",
+            "    _out[_http_output_var] = {",
+            "        'ok': _result['ok'],",
+            "        'status_code': _result['status_code'],",
+            "        'response_headers': _result['response_headers'],",
+            "        'response_body': _result['response_body'],",
+            "        'error_message': _result['error_message'],",
+            "        'url_resolved': _resolved_url,",
+            "    }",
             "except Exception as _http_ex:",
             "    _out['http_url_resolved'] = None",
             "    _out['http_ok'] = False",
@@ -180,6 +278,7 @@ class HttpRequestNode(BaseNode):
             "    _out['http_response_headers'] = {}",
             "    _out['http_response_body'] = None",
             "    _out['http_error_message'] = str(_http_ex)",
+            "    _out[_http_output_var] = {'ok': False, 'status_code': None, 'response_headers': {}, 'response_body': None, 'error_message': str(_http_ex), 'url_resolved': None}",
         ]
 
         include_flag = self.config.get("include_other_input_fields", False)
