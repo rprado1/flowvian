@@ -1200,6 +1200,8 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
             nd for nd in sched_wave if nd["type"] == SchedulerNode.NODE_TYPE
         )
         sched_node = cast(SchedulerNode, _build_node(sched_node_data))
+        lines.append("    print(WORKFLOW_NAME)")
+        lines.append("    print('Aplicacion iniciada')")
         lines.append(sched_node.to_code(indent=4))  # "    while True:"
         lines.append("")
 
@@ -1226,7 +1228,6 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
 
         # Close the loop with time.sleep (indent=4 inside _run)
         lines.append(sched_node.loop_close_code(indent=4))
-        lines.append("        print(json.dumps(_final_output, default=str))")
         lines.append("")
 
     else:
