@@ -47,7 +47,6 @@ class SchedulerNode(BaseNode):
     def loop_close_code(self, indent: int = 0) -> str:
         """Code that closes the while-True loop (time.sleep call)."""
         lines = [
-            "    import time",
             "    time.sleep(_sleep_seconds)",
         ]
         return self._indent("\n".join(lines), indent)

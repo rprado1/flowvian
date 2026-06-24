@@ -62,3 +62,4 @@
 - 2.- Requiero crear un nodo map, debe permitirme ingresar el valor de la varaible nueva, debe permitirme ingresar la variable de entrada, debe permitirme registrar las opciones de valores a los que se mapeará (pude ser litera, variable, secreto, global) si la variable cumple una condicion
 - 3.- Requiero una forma de exportar e importar la plantilla de un workflow
 - 4.- Quiero que cuando el nodo inicial sea scheduler, cuando ejecuto archivo ejecutable, en consola solo se vea: Nombre del workflows /n Aplicación iniciada, ctualmente se ven los logs. Solo los errores se escriben en un archivo como aahora
+- 5.- Quiero que en el momento de dar clic en el boton de Generate EXE, se presente dos opciones, descargar sin debug y con debug, si se selecciona la primera opcion se descarga como esta actualmente, si des descarvga con debug al final de cada iteracions se debe guardar todo los datos de la tabla resultados en un archivo de log

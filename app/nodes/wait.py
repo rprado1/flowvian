@@ -19,7 +19,6 @@ class WaitNode(BaseNode):
         seconds = float(self.config.get("seconds", 1) or 0)
         lines = [
             "# Wait",
-            "import time",
             f"time.sleep({seconds!r})",
         ]
         return self._indent("\n".join(lines), indent)

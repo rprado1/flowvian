@@ -69,6 +69,7 @@ SCRIPT_HEADER = '''\
 import sys
 import os
 import json
+import time
 import logging
 import traceback
 import uuid
@@ -107,6 +108,32 @@ _secret_store = {}
 _global_store = {}
 _current_node_label = ""
 _stop_path = os.environ.get("WORKFLOW_STOP_PATH", "")
+_debug_enabled = bool(globals().get("WORKFLOW_DEBUG", False))
+_debug_log_path = os.path.join(_exe_dir, WORKFLOW_NAME.replace(" ", "_") + "_debug.log")
+_results_table = []
+
+def _append_results_table_row(_row):
+    if not _debug_enabled:
+        return
+    if isinstance(_row, dict):
+        _results_table.append(_row)
+
+def _write_results_table_log(_iteration=None):
+    if not _debug_enabled:
+        return
+    _payload = {
+        "ts": datetime.now(timezone.utc).isoformat(),
+        "workflow_id": WORKFLOW_ID,
+        "workflow_name": WORKFLOW_NAME,
+        "iteration": _iteration,
+        "results_table": list(_results_table),
+    }
+    try:
+        with open(_debug_log_path, "a", encoding="utf-8") as _f:
+            _f.write(json.dumps(_payload, ensure_ascii=False, default=str))
+            _f.write("\\n")
+    except Exception:
+        pass
 
 def _set_current_node_label(_label):
     global _current_node_label
@@ -654,7 +681,7 @@ def _serve_webhook(method, host, port, path, input_params, response_body_var, re
 
 WORKFLOW_MAIN_START = '''\
 def _run():
-    global _items, _final_output, _secret_store, _global_store
+    global _items, _final_output, _secret_store, _global_store, _results_table
 '''
 
 WORKFLOW_MAIN_END = '''\
@@ -766,6 +793,7 @@ def _emit_waves(
     base_indent: int,
     lines: list[str],
     instrument: bool = False,
+    emit_results_table: bool = False,
 ) -> None:
     """
     Emit Python source lines for a sequence of waves at the given base indent.
@@ -872,9 +900,9 @@ def _emit_waves(
             lines.append(f"{pad}_node_debug = None")
             lines.append(f"{pad}_set_current_node_label({node_label!r})")
             lines.append(f"{pad}_raise_if_stop_requested(node_id={node_id!r}, node_type={node_type!r})")
+            lines.append(f"{pad}_items_before = list(_items)")
 
             if instrument:
-                lines.append(f"{pad}_items_before = list(_items)")
                 lines.append(f"{pad}try:")
                 lines.append(node.to_code(indent=base_indent + 4))
                 lines.append(f"{pad}    _items_after = list(_items)")
@@ -900,22 +928,48 @@ def _emit_waves(
                 lines.append(f"{pad}    raise")
                 lines.append("")
             else:
-                lines.append(node.to_code(indent=base_indent))
-                lines.append(f"{pad}_items_after = list(_items)")
-                lines.append(f"{pad}_node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
-                lines.append(f"{pad}_node_outputs_norm = {{}}")
-                lines.append(f"{pad}for _out_name, _out_items in _node_outputs_raw.items():")
-                lines.append(f"{pad}    if _out_items is None:")
-                lines.append(f"{pad}        _node_outputs_norm[str(_out_name)] = []")
-                lines.append(f"{pad}    elif isinstance(_out_items, list):")
-                lines.append(f"{pad}        _node_outputs_norm[str(_out_name)] = list(_out_items)")
-                lines.append(f"{pad}    else:")
-                lines.append(f"{pad}        raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
-                lines.append(f"{pad}if 'output_1' not in _node_outputs_norm:")
-                lines.append(f"{pad}    _node_outputs_norm['output_1'] = list(_items_after)")
-                lines.append(f"{pad}_node_items[{node_id!r}] = _items_after")
-                lines.append(f"{pad}_node_outputs[{node_id!r}] = _node_outputs_norm")
-                lines.append("")
+                if emit_results_table:
+                    lines.append(f"{pad}try:")
+                    lines.append(node.to_code(indent=base_indent + 4))
+                    lines.append(f"{pad}    _items_after = list(_items)")
+                    lines.append(f"{pad}    _node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
+                    lines.append(f"{pad}    _node_outputs_norm = {{}}")
+                    lines.append(f"{pad}    for _out_name, _out_items in _node_outputs_raw.items():")
+                    lines.append(f"{pad}        if _out_items is None:")
+                    lines.append(f"{pad}            _node_outputs_norm[str(_out_name)] = []")
+                    lines.append(f"{pad}        elif isinstance(_out_items, list):")
+                    lines.append(f"{pad}            _node_outputs_norm[str(_out_name)] = list(_out_items)")
+                    lines.append(f"{pad}        else:")
+                    lines.append(f"{pad}            raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
+                    lines.append(f"{pad}    if 'output_1' not in _node_outputs_norm:")
+                    lines.append(f"{pad}        _node_outputs_norm['output_1'] = list(_items_after)")
+                    lines.append(f"{pad}    _node_items[{node_id!r}] = _items_after")
+                    lines.append(f"{pad}    _node_outputs[{node_id!r}] = _node_outputs_norm")
+                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after}})")
+                    lines.append(f"{pad}except _StopIterationExecution as _stop_ex:")
+                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message}})")
+                    lines.append(f"{pad}    raise")
+                    lines.append(f"{pad}except Exception as _dbg_ex:")
+                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex)}})")
+                    lines.append(f"{pad}    raise")
+                    lines.append("")
+                else:
+                    lines.append(node.to_code(indent=base_indent))
+                    lines.append(f"{pad}_items_after = list(_items)")
+                    lines.append(f"{pad}_node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
+                    lines.append(f"{pad}_node_outputs_norm = {{}}")
+                    lines.append(f"{pad}for _out_name, _out_items in _node_outputs_raw.items():")
+                    lines.append(f"{pad}    if _out_items is None:")
+                    lines.append(f"{pad}        _node_outputs_norm[str(_out_name)] = []")
+                    lines.append(f"{pad}    elif isinstance(_out_items, list):")
+                    lines.append(f"{pad}        _node_outputs_norm[str(_out_name)] = list(_out_items)")
+                    lines.append(f"{pad}    else:")
+                    lines.append(f"{pad}        raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
+                    lines.append(f"{pad}if 'output_1' not in _node_outputs_norm:")
+                    lines.append(f"{pad}    _node_outputs_norm['output_1'] = list(_items_after)")
+                    lines.append(f"{pad}_node_items[{node_id!r}] = _items_after")
+                    lines.append(f"{pad}_node_outputs[{node_id!r}] = _node_outputs_norm")
+                    lines.append("")
         else:
             # Multi-node wave: each branch resolves inputs from its own predecessors.
             branch_names: list[str] = []
@@ -936,9 +990,9 @@ def _emit_waves(
                 lines.append(f"{inner_pad}_node_debug = None")
                 lines.append(f"{inner_pad}_set_current_node_label({node_label!r})")
                 lines.append(f"{inner_pad}_raise_if_stop_requested(node_id={node_id!r}, node_type={node_type!r})")
+                lines.append(f"{inner_pad}_items_before = list(_items)")
 
                 if instrument:
-                    lines.append(f"{inner_pad}_items_before = list(_items)")
                     lines.append(f"{inner_pad}try:")
                     lines.append(node.to_code(indent=base_indent + 8))
                     lines.append(f"{inner_pad}    _items_after = list(_items)")
@@ -962,20 +1016,44 @@ def _emit_waves(
                     lines.append(f"{inner_pad}    _trace.append({{'id': {node_id!r}, 'type': {node_type!r}, 'label': {node_label!r}, 'status': 'error', 'ts': time.time(), 'items_in': _items_before, 'error': str(_tr_ex)}})")
                     lines.append(f"{inner_pad}    raise")
                 else:
-                    lines.append(node.to_code(indent=base_indent + 4))
-                    lines.append(f"{inner_pad}_items_after = list(_items)")
-                    lines.append(f"{inner_pad}_node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
-                    lines.append(f"{inner_pad}_node_outputs_norm = {{}}")
-                    lines.append(f"{inner_pad}for _out_name, _out_items in _node_outputs_raw.items():")
-                    lines.append(f"{inner_pad}    if _out_items is None:")
-                    lines.append(f"{inner_pad}        _node_outputs_norm[str(_out_name)] = []")
-                    lines.append(f"{inner_pad}    elif isinstance(_out_items, list):")
-                    lines.append(f"{inner_pad}        _node_outputs_norm[str(_out_name)] = list(_out_items)")
-                    lines.append(f"{inner_pad}    else:")
-                    lines.append(f"{inner_pad}        raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
-                    lines.append(f"{inner_pad}if 'output_1' not in _node_outputs_norm:")
-                    lines.append(f"{inner_pad}    _node_outputs_norm['output_1'] = list(_items_after)")
-                    lines.append(f"{inner_pad}_wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm, 'debug': _node_debug}}")
+                    if emit_results_table:
+                        lines.append(f"{inner_pad}try:")
+                        lines.append(node.to_code(indent=base_indent + 8))
+                        lines.append(f"{inner_pad}    _items_after = list(_items)")
+                        lines.append(f"{inner_pad}    _node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
+                        lines.append(f"{inner_pad}    _node_outputs_norm = {{}}")
+                        lines.append(f"{inner_pad}    for _out_name, _out_items in _node_outputs_raw.items():")
+                        lines.append(f"{inner_pad}        if _out_items is None:")
+                        lines.append(f"{inner_pad}            _node_outputs_norm[str(_out_name)] = []")
+                        lines.append(f"{inner_pad}        elif isinstance(_out_items, list):")
+                        lines.append(f"{inner_pad}            _node_outputs_norm[str(_out_name)] = list(_out_items)")
+                        lines.append(f"{inner_pad}        else:")
+                        lines.append(f"{inner_pad}            raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
+                        lines.append(f"{inner_pad}    if 'output_1' not in _node_outputs_norm:")
+                        lines.append(f"{inner_pad}        _node_outputs_norm['output_1'] = list(_items_after)")
+                        lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm, 'debug': _node_debug}}")
+                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after}})")
+                        lines.append(f"{inner_pad}except _StopIterationExecution as _stop_ex:")
+                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message}})")
+                        lines.append(f"{inner_pad}    raise")
+                        lines.append(f"{inner_pad}except Exception as _dbg_ex:")
+                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex)}})")
+                        lines.append(f"{inner_pad}    raise")
+                    else:
+                        lines.append(node.to_code(indent=base_indent + 4))
+                        lines.append(f"{inner_pad}_items_after = list(_items)")
+                        lines.append(f"{inner_pad}_node_outputs_raw = _branch_outputs if isinstance(_branch_outputs, dict) else {{'output_1': _items_after}}")
+                        lines.append(f"{inner_pad}_node_outputs_norm = {{}}")
+                        lines.append(f"{inner_pad}for _out_name, _out_items in _node_outputs_raw.items():")
+                        lines.append(f"{inner_pad}    if _out_items is None:")
+                        lines.append(f"{inner_pad}        _node_outputs_norm[str(_out_name)] = []")
+                        lines.append(f"{inner_pad}    elif isinstance(_out_items, list):")
+                        lines.append(f"{inner_pad}        _node_outputs_norm[str(_out_name)] = list(_out_items)")
+                        lines.append(f"{inner_pad}    else:")
+                        lines.append(f"{inner_pad}        raise ValueError(f\"[{node_label}] node output '{{_out_name}}' must be a list\")")
+                        lines.append(f"{inner_pad}if 'output_1' not in _node_outputs_norm:")
+                        lines.append(f"{inner_pad}    _node_outputs_norm['output_1'] = list(_items_after)")
+                        lines.append(f"{inner_pad}_wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm, 'debug': _node_debug}}")
                 lines.append("")
 
             submits = ", ".join(
@@ -1084,7 +1162,13 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
     return errors
 
 
-def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edges: list[dict]) -> str:
+def generate_script(
+    workflow_name: str,
+    workflow_id: str,
+    nodes: list[dict],
+    edges: list[dict],
+    debug: bool = False,
+) -> str:
     """
     Generate a standalone Python script from the workflow graph.
     Independent branches at the same topological level are executed in parallel.
@@ -1106,7 +1190,8 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
     # WORKFLOW_NAME and WORKFLOW_ID must be defined before the logging setup in SCRIPT_HEADER
     lines: list[str] = [
         f'WORKFLOW_NAME = {repr(workflow_name)}',
-        f'WORKFLOW_ID = {repr(workflow_id)}\n',
+        f'WORKFLOW_ID = {repr(workflow_id)}',
+        f'WORKFLOW_DEBUG = {"True" if debug else "False"}\n',
     ]
     lines.append(SCRIPT_HEADER)
 
@@ -1168,7 +1253,13 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         lines.append("")
         lines.append("    try:")
         if webhook_post_waves:
-            _emit_waves(webhook_post_waves, edges=graph_edges, base_indent=8, lines=lines)
+            _emit_waves(
+                webhook_post_waves,
+                edges=graph_edges,
+                base_indent=8,
+                lines=lines,
+                emit_results_table=debug,
+            )
         else:
             lines.append("        _final_output = {'mode': 'by_terminal_branch', 'branches': {}, 'terminals': [], 'legacy_items': list(_items)}")
         lines.append("    except _StopIterationExecution as _stop_ex:")
@@ -1188,7 +1279,13 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         # Waves before the scheduler → setup code (indent=4, inside _run)
         if waves[:scheduler_wave_idx]:
             lines.append("    try:")
-            _emit_waves(waves[:scheduler_wave_idx], edges=graph_edges, base_indent=8, lines=lines)
+            _emit_waves(
+                waves[:scheduler_wave_idx],
+                edges=graph_edges,
+                base_indent=8,
+                lines=lines,
+                emit_results_table=debug,
+            )
             lines.append("    except _StopIterationExecution as _stop_ex:")
             lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
             lines.append("        return")
@@ -1200,8 +1297,7 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
             nd for nd in sched_wave if nd["type"] == SchedulerNode.NODE_TYPE
         )
         sched_node = cast(SchedulerNode, _build_node(sched_node_data))
-        lines.append("    print(WORKFLOW_NAME)")
-        lines.append("    print('Aplicacion iniciada')")
+        lines.append("    print('Ready')")
         lines.append(sched_node.to_code(indent=4))  # "    while True:"
         lines.append("")
 
@@ -1209,6 +1305,8 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         lines.append("        EXECUTION_ID = str(uuid.uuid4())")
         lines.append("        _secret_store = {}")
         lines.append("        _global_store = {}")
+        if debug:
+            lines.append("        _results_table = []")
         lines.append("        _items = [{")
         lines.append('            "workflowId": WORKFLOW_ID,')
         lines.append('            "executionId": EXECUTION_ID,')
@@ -1221,19 +1319,34 @@ def generate_script(workflow_name: str, workflow_id: str, nodes: list[dict], edg
         post_scheduler_waves = waves[scheduler_wave_idx + 1:]
         if post_scheduler_waves:
             lines.append("        try:")
-            _emit_waves(post_scheduler_waves, edges=graph_edges, base_indent=12, lines=lines)
+            _emit_waves(
+                post_scheduler_waves,
+                edges=graph_edges,
+                base_indent=12,
+                lines=lines,
+                emit_results_table=debug,
+            )
             lines.append("        except _StopIterationExecution as _stop_ex:")
             lines.append("            _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
             lines.append("")
+        if debug:
+            lines.append("        _write_results_table_log(_iteration=EXECUTION_ID)")
+            lines.append("")
 
-        # Close the loop with time.sleep (indent=4 inside _run)
-        lines.append(sched_node.loop_close_code(indent=4))
+        # Close the loop with time.sleep (indent=8, inside while True)
+        lines.append("        time.sleep(_sleep_seconds)")
         lines.append("")
 
     else:
         # No scheduler — all waves run sequentially inside _run (indent=4)
         lines.append("    try:")
-        _emit_waves(waves, edges=graph_edges, base_indent=8, lines=lines)
+        _emit_waves(
+            waves,
+            edges=graph_edges,
+            base_indent=8,
+            lines=lines,
+            emit_results_table=debug,
+        )
         lines.append("    except _StopIterationExecution as _stop_ex:")
         lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
 

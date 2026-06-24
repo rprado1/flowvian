@@ -435,8 +435,13 @@ When using Scheduler, each loop tick starts with a fresh execution context (`exe
 
 1. Design the workflow and connect the nodes
 2. Click **⚙ Generate EXE**
-3. Wait for compilation (may take ~1 minute the first time due to PyInstaller analysis)
-4. Download the `.exe` from the result dialog
+3. Choose one option:
+   - **Download without debug**: standard build and download
+   - **Download with debug**: standard build plus runtime debug logging
+4. Wait for compilation (may take ~1 minute the first time due to PyInstaller analysis)
+5. Download the `.exe` from the result dialog
+
+When built with debug and used with a Scheduler workflow, each loop iteration appends a JSON line with the full results table to `<workflow_name>_debug.log` next to the executable.
 
 The executable is standalone (`--onefile`) and does not require Python installed on the target machine.
 
@@ -513,6 +518,10 @@ workflow-exe/
 - `traces`: per-node execution trace
 - `output`: raw stdout/stderr
 - `final_output`: terminal-branch structured output (`mode`, `branches`, `terminals`, `legacy_items`)
+
+`POST /build` accepts optional JSON body:
+
+- `debug` (boolean, default `false`): when `true`, generated EXE writes per-iteration results table debug logs for Scheduler workflows.
 
 ---
 
