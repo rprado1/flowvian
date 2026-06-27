@@ -10,7 +10,7 @@ export default function BuildOptionsModal({
 }) {
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
-      <DialogContent className="bg-card border-border text-foreground max-w-md">
+      <DialogContent className="bg-card border-border text-foreground max-w-lg">
         <DialogHeader>
           <DialogTitle>Generate EXE</DialogTitle>
         </DialogHeader>
@@ -24,12 +24,14 @@ export default function BuildOptionsModal({
             the full run results table after each scheduler iteration.
           </p>
         </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={building}>Cancel</Button>
-          <Button variant="outline" onClick={onBuildNormal} disabled={building}>
+        <DialogFooter className="flex-col items-stretch gap-2 space-x-0 sm:flex-col sm:items-stretch sm:space-x-0">
+          <Button variant="outline" onClick={onClose} disabled={building} className="w-full">
+            Cancel
+          </Button>
+          <Button variant="outline" onClick={onBuildNormal} disabled={building} className="w-full">
             Download without debug
           </Button>
-          <Button onClick={onBuildDebug} disabled={building}>
+          <Button onClick={onBuildDebug} disabled={building} className="w-full">
             Download with debug
           </Button>
         </DialogFooter>
