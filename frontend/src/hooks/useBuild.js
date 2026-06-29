@@ -7,11 +7,11 @@ const MAX_POLLS     = 150; // 5 minutes
 export function useBuild() {
   const [building, setBuilding] = useState(false);
 
-  const buildExe = useCallback(async (wfId, { onSuccess, onError } = {}) => {
+  const buildExe = useCallback(async (wfId, { debug = false, onSuccess, onError } = {}) => {
     setBuilding(true);
     let jobId;
     try {
-      const data = await api('POST', `/api/workflows/${wfId}/build`);
+      const data = await api('POST', `/api/workflows/${wfId}/build`, { debug });
       jobId = data.job_id;
     } catch (e) {
       setBuilding(false);

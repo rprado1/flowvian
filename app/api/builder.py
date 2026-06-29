@@ -9,7 +9,7 @@ import time
 import traceback
 import uuid
 
-from flask import Blueprint, jsonify, current_app, send_file
+from flask import Blueprint, jsonify, current_app, request, send_file
 from app.db.manager import get_workflow_meta, get_workflow_graph
 from app.codegen.generator import generate_script, validate_graph, generate_run_script
 
@@ -107,8 +107,17 @@ def build(workflow_id):
 
     graph = get_workflow_graph(data_dir(), workflow_id)
 
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        body = {}
+    raw_debug = body.get("debug", False)
+    if isinstance(raw_debug, str):
+        debug = raw_debug.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        debug = bool(raw_debug)
+
     try:
-        script = generate_script(meta["name"], workflow_id, graph["nodes"], graph["edges"])
+        script = generate_script(meta["name"], workflow_id, graph["nodes"], graph["edges"], debug=debug)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 422
 

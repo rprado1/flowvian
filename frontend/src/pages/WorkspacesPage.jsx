@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -28,8 +29,9 @@ export default function WorkspacesPage() {
 
   const [query, setQuery] = useState('');
   const [showNewWf, setShowNewWf] = useState(false);
-  const [renameTarget, setRenameTarget] = useState(null);
-  const [renameValue, setRenameValue] = useState('');
+  const [editTarget, setEditTarget] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
@@ -45,20 +47,22 @@ export default function WorkspacesPage() {
     return workflows.filter(wf => `${wf.name} ${wf.description || ''}`.toLowerCase().includes(q));
   }, [workflows, query]);
 
-  const openRename = (wf) => {
-    setRenameTarget(wf);
-    setRenameValue(wf.name || '');
+  const openEdit = (wf) => {
+    setEditTarget(wf);
+    setEditName(wf.name || '');
+    setEditDescription(wf.description || '');
   };
 
-  const submitRename = async () => {
-    if (!renameTarget) return;
-    const nextName = renameValue.trim();
+  const submitEdit = async () => {
+    if (!editTarget) return;
+    const nextName = editName.trim();
+    const nextDescription = editDescription.trim();
     if (!nextName) return toast.error('Enter a workspace name');
     setRenaming(true);
     try {
-      await renameWorkflow(renameTarget.id, nextName);
-      toast.success('Workspace renamed');
-      setRenameTarget(null);
+      await renameWorkflow(editTarget.id, nextName, nextDescription);
+      toast.success('Workspace updated');
+      setEditTarget(null);
     } catch (e) {
       toast.error(e.message);
     } finally {
@@ -113,7 +117,7 @@ export default function WorkspacesPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Button size="sm" className="bg-sky-600 text-white hover:bg-sky-700" onClick={() => navigate(`/editor/${wf.id}`)}>Open</Button>
-                        <Button variant="outline" size="sm" onClick={() => openRename(wf)}>Rename</Button>
+                        <Button variant="outline" size="sm" onClick={() => openEdit(wf)}>Edit</Button>
                         <Button variant="destructive" size="sm" onClick={() => setDeleteTarget(wf)}>Delete</Button>
                       </div>
                     </TableCell>
@@ -127,22 +131,29 @@ export default function WorkspacesPage() {
 
       <NewWorkflowModal open={showNewWf} onClose={() => setShowNewWf(false)} />
 
-      <Dialog open={!!renameTarget} onOpenChange={(v) => !v && setRenameTarget(null)}>
+      <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
         <DialogContent className="bg-card border-border text-foreground">
           <DialogHeader>
-            <DialogTitle>Rename Workspace</DialogTitle>
+            <DialogTitle>Edit Workspace</DialogTitle>
           </DialogHeader>
-          <div className="py-2">
+          <div className="py-2 space-y-3">
             <Input
               autoFocus
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && submitRename()}
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+              placeholder="Workspace name"
+              onKeyDown={(e) => e.key === 'Enter' && submitEdit()}
+            />
+            <Textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              placeholder="Workspace description"
+              rows={4}
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameTarget(null)} disabled={renaming}>Cancel</Button>
-            <Button onClick={submitRename} disabled={renaming}>{renaming ? 'Saving…' : 'Rename'}</Button>
+            <Button variant="outline" onClick={() => setEditTarget(null)} disabled={renaming}>Cancel</Button>
+            <Button onClick={submitEdit} disabled={renaming}>{renaming ? 'Saving…' : 'Save'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

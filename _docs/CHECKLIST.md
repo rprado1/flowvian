@@ -61,6 +61,7 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 39  | Nodo OpenAI Responses Create con parámetros mínimos (`base_url`, `api_key`, `model`, `message/input`, `instructions`, `temperature`)     | ✅ Completado | Backend: `app/nodes/openai_responses.py` + registro en `app/codegen/generator.py`. Frontend: `frontend/src/nodes/OpenaiResponsesNode.jsx` + registro en `frontend/src/nodes/index.js`. `message` soporta `${VAR}` y `#{SECRET}` dentro del flujo.                          |
 | 40  | Nodo Webhook de entrada (GET/POST), define params tipados y responde al caller estilo REST                                              | ✅ Completado | Backend: `app/nodes/webhook.py` + runtime HTTP en `app/codegen/generator.py` (`_serve_webhook`, parse/coercion de params, mapeo de respuesta). Frontend: `frontend/src/nodes/WebhookNode.jsx` + `NODE_META.webhook` en `frontend/src/nodes/index.js`.                    |
+| 41  | Generate EXE con dos opciones (sin debug / con debug) y log por iteración en modo debug                                               | ✅ Completado | Frontend: modal de opciones al pulsar Generate EXE (`frontend/src/components/modals/BuildOptionsModal.jsx`). Backend: `POST /api/workflows/{id}/build` acepta `debug`. Codegen: en build debug, workflows con Scheduler escriben la tabla de resultados por iteración en `<workflow>_debug.log`. |
 
 ---
 
@@ -68,10 +69,10 @@ Seguimiento del estado de implementación de cada requerimiento definido en `REQ
 
 | Estado         | Cantidad |
 | -------------- | -------- |
-| ✅ Completado  | 40       |
+| ✅ Completado  | 41       |
 | 🔄 En progreso | 0        |
 | ⏳ Pendiente   | 0        |
 
 ---
 
-_Última actualización: 2026-06-20_
+_Última actualización: 2026-06-24_
