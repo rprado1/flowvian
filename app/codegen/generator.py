@@ -222,6 +222,16 @@ class _StopIterationExecution(Exception):
         self.node_id = node_id
         self.node_type = node_type
 
+def _log_stop_event(_stop_ex, _context="workflow"):
+    _ctx = str(_context or "workflow")
+    _logger.error(
+        "Stop execution [%s]: message=%s node_id=%s node_type=%s",
+        _ctx,
+        getattr(_stop_ex, "message", str(_stop_ex)),
+        getattr(_stop_ex, "node_id", None),
+        getattr(_stop_ex, "node_type", None),
+    )
+
 def _resolve_template(_text, _item):
     if not isinstance(_text, str):
         return _text
@@ -650,6 +660,7 @@ def _serve_webhook(method, host, port, path, input_params, response_body_var, re
 
                 self._send_json(_status, _response_payload, _extra_headers)
             except _StopIterationExecution as _stop_ex:
+                _log_stop_event(_stop_ex, _context="webhook_request")
                 self._send_json(422, {
                     'ok': False,
                     'error': _stop_ex.message,
@@ -689,6 +700,7 @@ if __name__ == "__main__":
     try:
         _run()
     except _StopIterationExecution as _stop_ex:
+        _log_stop_event(_stop_ex, _context="main")
         _final_output = {
             'status': 'stopped_current_execution',
             'stop_reason': _stop_ex.message,
@@ -1263,6 +1275,7 @@ def generate_script(
         else:
             lines.append("        _final_output = {'mode': 'by_terminal_branch', 'branches': {}, 'terminals': [], 'legacy_items': list(_items)}")
         lines.append("    except _StopIterationExecution as _stop_ex:")
+        lines.append("        _log_stop_event(_stop_ex, _context='webhook_workflow')")
         lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
         lines.append("    return _final_output")
         lines.append("")
@@ -1287,6 +1300,7 @@ def generate_script(
                 emit_results_table=debug,
             )
             lines.append("    except _StopIterationExecution as _stop_ex:")
+            lines.append("        _log_stop_event(_stop_ex, _context='pre_scheduler')")
             lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
             lines.append("        return")
             lines.append("")
@@ -1327,6 +1341,7 @@ def generate_script(
                 emit_results_table=debug,
             )
             lines.append("        except _StopIterationExecution as _stop_ex:")
+            lines.append("            _log_stop_event(_stop_ex, _context='scheduler_loop')")
             lines.append("            _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
             lines.append("")
         if debug:
@@ -1348,6 +1363,7 @@ def generate_script(
             emit_results_table=debug,
         )
         lines.append("    except _StopIterationExecution as _stop_ex:")
+        lines.append("        _log_stop_event(_stop_ex, _context='workflow')")
         lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
 
     lines.append(WORKFLOW_MAIN_END)
@@ -1363,6 +1379,7 @@ import sys
 import os
 import json
 import time
+import logging
 import uuid
 import re
 import base64
@@ -1382,6 +1399,16 @@ _final_output = {}
 _final_output_path = os.environ.get("WORKFLOW_FINAL_OUTPUT_PATH", "")
 _stop_path = os.environ.get("WORKFLOW_STOP_PATH", "")
 _run_state_path = os.environ.get("WORKFLOW_RUN_STATE_PATH", "")
+
+_exe_dir = os.path.dirname(os.path.abspath(sys.executable if getattr(sys, "frozen", False) else sys.argv[0]))
+_log_path = os.path.join(_exe_dir, WORKFLOW_NAME.replace(" ", "_") + "_errors.log")
+logging.basicConfig(
+    filename=_log_path,
+    level=logging.ERROR,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+_logger = logging.getLogger(__name__)
 
 _TPL_VAR_RE = re.compile(r"\\$\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
 _SECRET_VAR_RE = re.compile(r"#\\{([A-Za-z_][A-Za-z0-9_]*)\\}")
@@ -1479,6 +1506,16 @@ class _StopIterationExecution(Exception):
         self.message = str(message)
         self.node_id = node_id
         self.node_type = node_type
+
+def _log_stop_event(_stop_ex, _context="workflow"):
+    _ctx = str(_context or "workflow")
+    _logger.error(
+        "Stop execution [%s]: message=%s node_id=%s node_type=%s",
+        _ctx,
+        getattr(_stop_ex, "message", str(_stop_ex)),
+        getattr(_stop_ex, "node_id", None),
+        getattr(_stop_ex, "node_type", None),
+    )
 
 def _resolve_template(_text, _item):
     if not isinstance(_text, str):
@@ -1971,6 +2008,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("                    _response_payload = {'ok': True, 'workflow_output': _result}")
         lines.append("                self._send_json(_status, _response_payload, _extra_headers)")
         lines.append("            except _StopIterationExecution as _stop_ex:")
+        lines.append("                _log_stop_event(_stop_ex, _context='run_webhook_request')")
         lines.append("                _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
         lines.append("                self._send_json(422, {'ok': False, 'error': _stop_ex.message})")
         lines.append("            except Exception as _webhook_ex:")
@@ -2031,6 +2069,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         else:
             lines.append("        _final_output = {'mode': 'by_terminal_branch', 'branches': {}, 'terminals': [], 'legacy_items': list(_items)}")
         lines.append("    except _StopIterationExecution as _stop_ex:")
+        lines.append("        _log_stop_event(_stop_ex, _context='run_webhook_workflow')")
         lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
         lines.append("    _write_run_state('completed', phase='done')")
         lines.append("    return _final_output")
@@ -2069,6 +2108,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("        _run()")
         lines.append("        _write_run_state('completed', phase='done')")
         lines.append("    except _StopIterationExecution as _stop_ex:")
+        lines.append("        _log_stop_event(_stop_ex, _context='run_main')")
         lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
         lines.append("        _write_run_state('stopped', phase='stopped_by_node')")
         lines.append("    except Exception as _tr_ex:")
@@ -2112,6 +2152,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
             _emit_waves(waves[:scheduler_wave_idx], edges=graph_edges, base_indent=8, lines=lines,
                           instrument=True)
             lines.append("    except _StopIterationExecution as _stop_ex:")
+            lines.append("        _log_stop_event(_stop_ex, _context='run_pre_scheduler')")
             lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
             lines.append("        return")
             lines.append("")
@@ -2136,6 +2177,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
             _emit_waves(post_scheduler_waves, edges=graph_edges, base_indent=12, lines=lines,
                           instrument=True)
             lines.append("        except _StopIterationExecution as _stop_ex:")
+            lines.append("            _log_stop_event(_stop_ex, _context='run_scheduler_loop')")
             lines.append("            _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
             lines.append("")
 
@@ -2147,6 +2189,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("    try:")
         _emit_waves(waves, edges=graph_edges, base_indent=8, lines=lines, instrument=True)
         lines.append("    except _StopIterationExecution as _stop_ex:")
+        lines.append("        _log_stop_event(_stop_ex, _context='run_workflow')")
         lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
 
     lines.append("")
@@ -2154,6 +2197,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     lines.append("    try:")
     lines.append("        _run()")
     lines.append("    except _StopIterationExecution as _stop_ex:")
+    lines.append("        _log_stop_event(_stop_ex, _context='run_main')")
     lines.append("        _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
     lines.append("    except Exception as _tr_ex:")
     lines.append("        if not _trace or _trace[-1].get('status') != 'error':")
