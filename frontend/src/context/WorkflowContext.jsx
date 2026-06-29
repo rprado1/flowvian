@@ -183,9 +183,13 @@ export function WorkflowProvider({ children }) {
     return wf;
   }, [openWorkflow]);
 
-  const renameWorkflow = useCallback(async (id, name) => {
-    const updated = await api('PUT', `/api/workflows/${id}`, { name });
-    setWorkflows(prev => prev.map(w => w.id === id ? { ...w, name: updated.name } : w));
+  const renameWorkflow = useCallback(async (id, name, description) => {
+    const updated = await api('PUT', `/api/workflows/${id}`, { name, description });
+    setWorkflows(prev => prev.map(w => (w.id === id ? {
+      ...w,
+      name: updated.name,
+      description: updated.description,
+    } : w)));
     if (id === currentWfId) setCurrentWfName(updated.name);
     return updated;
   }, [currentWfId]);

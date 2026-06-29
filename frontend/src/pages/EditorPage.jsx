@@ -9,6 +9,7 @@ import Canvas from '@/components/Canvas';
 import PropsPanel from '@/components/PropsPanel';
 import RunPanel from '@/components/RunPanel';
 import BuildLogModal from '@/components/modals/BuildLogModal';
+import BuildOptionsModal from '@/components/modals/BuildOptionsModal';
 import RenameModal from '@/components/modals/RenameModal';
 import { useBuild } from '@/hooks/useBuild';
 
@@ -26,6 +27,7 @@ export default function EditorPage() {
   const [runFinalOutput, setRunFinalOutput] = useState(null);
   const [showRun, setShowRun] = useState(false);
   const [buildLog, setBuildLog] = useState(null);
+  const [showBuildOptions, setShowBuildOptions] = useState(false);
   const [runStateMsg, setRunStateMsg] = useState('');
 
   const handleExportTemplate = async () => {
@@ -196,11 +198,12 @@ export default function EditorPage() {
     }
   };
 
-  const handleBuild = async () => {
+  const handleBuild = async (debug = false) => {
     if (!workflowId) return toast.error('Open a workspace first');
     await saveGraph(nodes, edges);
     toast.info('Building .exe — this may take a minute…');
     buildExe(workflowId, {
+      debug,
       onSuccess: (status) => {
         setBuildLog({ title: 'Build Successful ✓', content: status.log, success: true, downloadUrl: status.download_url });
         toast.success('EXE built successfully!');
@@ -210,6 +213,11 @@ export default function EditorPage() {
         toast.error('Build failed');
       },
     });
+  };
+
+  const handleBuildChoice = async (debug) => {
+    setShowBuildOptions(false);
+    await handleBuild(debug);
   };
 
   if (loadingWorkspace) {
@@ -229,7 +237,7 @@ export default function EditorPage() {
         onSave={handleSave}
         onRun={handleRun}
         onStopRun={handleStopRun}
-        onBuild={handleBuild}
+        onBuild={() => setShowBuildOptions(true)}
         onExportTemplate={handleExportTemplate}
         onImportTemplate={handleImportTemplate}
         running={running}
@@ -256,6 +264,13 @@ export default function EditorPage() {
       </div>
 
       <RenameModal open={showRename} onClose={() => setShowRename(false)} />
+      <BuildOptionsModal
+        open={showBuildOptions}
+        onClose={() => setShowBuildOptions(false)}
+        onBuildNormal={() => handleBuildChoice(false)}
+        onBuildDebug={() => handleBuildChoice(true)}
+        building={building}
+      />
       {buildLog && (
         <BuildLogModal
           open={!!buildLog}
