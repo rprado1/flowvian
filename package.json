@@ -1,0 +1,44 @@
+{
+  "name": "wbui",
+  "version": "1.0.0-alpha.8",
+  "description": "WorkflowEXE Builder CLI launcher",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rprado1/workflow-exe.git"
+  },
+  "bin": {
+    "wbui": "bin/wbui.js"
+  },
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "win32",
+    "linux"
+  ],
+  "files": [
+    "bin/",
+    "scripts/",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/prepare-npm-runtime.js",
+    "prepare:runtime": "node scripts/prepare-npm-runtime.js"
+  },
+  "config": {
+    "releaseRepo": "rprado1/workflow-exe",
+    "releaseTag": "v1.0.0-alpha.8",
+    "supportedTargets": "win32-x64,linux-x64",
+    "runtimeAssetsByTarget": {
+      "win32-x64": "wbui-win32-x64.exe",
+      "linux-x64": "wbui-linux-x64"
+    },
+    "runtimeBinaryByPlatform": {
+      "win32": "wbui-runtime.exe",
+      "linux": "wbui-runtime"
+    }
+  }
+}

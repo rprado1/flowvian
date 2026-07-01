@@ -19,9 +19,23 @@ Design the flow by dragging nodes onto an drag-style canvas, configure each step
 
 ## Requirements
 
-- **Python 3.9+**
-- **Node.js 18+** and npm (required to rebuild the frontend)
-- **Windows** — the generated `.exe` is Windows-only
+- **End users (npm global install):** Node.js 18+ and npm, Windows or Linux (x64)
+- **Contributors (source code mode):** Python 3.9+, Node.js 18+, npm
+
+---
+
+## Global npm installation (end users)
+
+Install and run without Python:
+
+```bash
+npm install -g wbui
+wbui start
+```
+
+Open `http://localhost:5007` in your browser.
+
+`wbui start` runs the packaged runtime downloaded for your platform (Windows/Linux).
 
 ---
 
@@ -71,7 +85,7 @@ cd ..
 python run.py
 ```
 
-Open `http://localhost:5000` in your browser.
+Open `http://localhost:5007` in your browser.
 
 > Always run from the project root with the venv active.
 
@@ -99,9 +113,9 @@ cd frontend
 npm run dev
 ```
 
-Open `http://localhost:5173`. Vite proxies `/api/*` requests to Flask on `:5000`.
+Open `http://localhost:5173`. Vite proxies `/api/*` requests to Flask on `:5007`.
 
-**3. Build for production (required for Flask to serve the app at `:5000`):**
+**3. Build for production (required for Flask to serve the app at `:5007`):**
 
 ```bash
 cd frontend
@@ -451,7 +465,7 @@ The executable is standalone (`--onefile`) and does not require Python installed
 
 ```
 workflow-exe/
-├── run.py                     # Entry point — starts Flask on :5000
+├── run.py                     # Entry point — starts Flask on :5007
 ├── requirements.txt           # flask, pyinstaller
 ├── frontend/                  # React source (Vite)
 │   ├── src/
