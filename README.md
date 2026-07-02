@@ -385,6 +385,7 @@ Required config:
 Optional config:
 
 - `disable_notification`
+- `ssl_mode` (`strict` default, or `insecure`)
 - `output_var` (default: `telegram_result`)
 
 Notes:
@@ -399,6 +400,9 @@ Notes:
   - `chat_id`
   - `response`
   - `error_message`
+  - `tls_mode`
+- `ssl_mode=insecure` disables TLS certificate validation. Use only as a temporary workaround.
+- Recommended future hardening for inspected networks: support/use a Custom CA bundle approach.
 
 ---
 
@@ -455,7 +459,7 @@ When using Scheduler, each loop tick starts with a fresh execution context (`exe
 4. Wait for compilation (may take ~1 minute the first time due to PyInstaller analysis)
 5. Download the `.exe` from the result dialog
 
-When built with debug and used with a Scheduler workflow, each loop iteration appends a JSON line with the full results table to `<workflow_name>_debug.log` next to the executable.
+When built with debug, each executed node appends a JSON line immediately to `<workflow_name>_debug.log` next to the executable, including node id/label/type, status, input (`items_in`), and output (`items_out`/`outputs`) or error details. In Scheduler workflows, an additional per-iteration summary line is appended with the full `results_table`.
 
 The executable is standalone (`--onefile`) and does not require Python installed on the target machine.
 
@@ -535,7 +539,7 @@ workflow-exe/
 
 `POST /build` accepts optional JSON body:
 
-- `debug` (boolean, default `false`): when `true`, generated EXE writes per-iteration results table debug logs for Scheduler workflows.
+- `debug` (boolean, default `false`): when `true`, generated EXE writes real-time per-node debug logs (`items_in`/`items_out`) and per-iteration summaries for Scheduler workflows.
 
 ---
 

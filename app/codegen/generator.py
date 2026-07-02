@@ -72,6 +72,8 @@ import json
 import time
 import logging
 import traceback
+import ssl
+import threading
 import uuid
 import re
 import base64
@@ -111,12 +113,33 @@ _stop_path = os.environ.get("WORKFLOW_STOP_PATH", "")
 _debug_enabled = bool(globals().get("WORKFLOW_DEBUG", False))
 _debug_log_path = os.path.join(_exe_dir, WORKFLOW_NAME.replace(" ", "_") + "_debug.log")
 _results_table = []
+_debug_log_lock = threading.Lock()
+
+def _write_debug_log_entry(_payload):
+    if not _debug_enabled:
+        return
+    try:
+        with _debug_log_lock:
+            with open(_debug_log_path, "a", encoding="utf-8") as _f:
+                _f.write(json.dumps(_payload, ensure_ascii=False, default=str))
+                _f.write("\\n")
+    except Exception:
+        pass
 
 def _append_results_table_row(_row):
     if not _debug_enabled:
         return
     if isinstance(_row, dict):
-        _results_table.append(_row)
+        _row_copy = dict(_row)
+        _results_table.append(_row_copy)
+        _write_debug_log_entry({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "workflow_id": WORKFLOW_ID,
+            "workflow_name": WORKFLOW_NAME,
+            "iteration": _row_copy.get("iteration"),
+            "event": "node_result",
+            "row": _row_copy,
+        })
 
 def _write_results_table_log(_iteration=None):
     if not _debug_enabled:
@@ -126,14 +149,10 @@ def _write_results_table_log(_iteration=None):
         "workflow_id": WORKFLOW_ID,
         "workflow_name": WORKFLOW_NAME,
         "iteration": _iteration,
+        "event": "iteration_summary",
         "results_table": list(_results_table),
     }
-    try:
-        with open(_debug_log_path, "a", encoding="utf-8") as _f:
-            _f.write(json.dumps(_payload, ensure_ascii=False, default=str))
-            _f.write("\\n")
-    except Exception:
-        pass
+    _write_debug_log_entry(_payload)
 
 def _set_current_node_label(_label):
     global _current_node_label
@@ -391,7 +410,7 @@ def _decode_http_body(_raw):
     except Exception:
         return _text
 
-def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
+def _perform_http_request(method, url, headers, body_obj, timeout_seconds, ssl_mode='strict'):
     _result = {
         "ok": False,
         "status_code": None,
@@ -410,9 +429,17 @@ def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
         if "Content-Type" not in _headers and "content-type" not in {k.lower(): k for k in _headers}:
             _headers["Content-Type"] = "application/json"
 
+    _ssl_mode = str(ssl_mode or 'strict').strip().lower()
+    if _ssl_mode == 'strict':
+        _ssl_context = ssl.create_default_context()
+    elif _ssl_mode == 'insecure':
+        _ssl_context = ssl._create_unverified_context()
+    else:
+        raise ValueError(f"Unsupported ssl_mode: {_ssl_mode}")
+
     _req = _UrlRequest(url=url, method=method, headers=_headers, data=_data)
     try:
-        with _urlopen(_req, timeout=float(timeout_seconds)) as _resp:
+        with _urlopen(_req, timeout=float(timeout_seconds), context=_ssl_context) as _resp:
             _raw = _resp.read(_MAX_RESPONSE_BODY_BYTES + 1)
             if len(_raw) > _MAX_RESPONSE_BODY_BYTES:
                 raise ValueError(f"Response body too large (>{_MAX_RESPONSE_BODY_BYTES} bytes)")
@@ -957,12 +984,12 @@ def _emit_waves(
                     lines.append(f"{pad}        _node_outputs_norm['output_1'] = list(_items_after)")
                     lines.append(f"{pad}    _node_items[{node_id!r}] = _items_after")
                     lines.append(f"{pad}    _node_outputs[{node_id!r}] = _node_outputs_norm")
-                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after}})")
+                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after, 'outputs': _node_outputs_norm, 'iteration': EXECUTION_ID}})")
                     lines.append(f"{pad}except _StopIterationExecution as _stop_ex:")
-                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message}})")
+                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message, 'iteration': EXECUTION_ID}})")
                     lines.append(f"{pad}    raise")
                     lines.append(f"{pad}except Exception as _dbg_ex:")
-                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex)}})")
+                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex), 'iteration': EXECUTION_ID}})")
                     lines.append(f"{pad}    raise")
                     lines.append("")
                 else:
@@ -1044,12 +1071,12 @@ def _emit_waves(
                         lines.append(f"{inner_pad}    if 'output_1' not in _node_outputs_norm:")
                         lines.append(f"{inner_pad}        _node_outputs_norm['output_1'] = list(_items_after)")
                         lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm, 'debug': _node_debug}}")
-                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after}})")
+                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after, 'outputs': _node_outputs_norm, 'iteration': EXECUTION_ID}})")
                         lines.append(f"{inner_pad}except _StopIterationExecution as _stop_ex:")
-                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message}})")
+                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message, 'iteration': EXECUTION_ID}})")
                         lines.append(f"{inner_pad}    raise")
                         lines.append(f"{inner_pad}except Exception as _dbg_ex:")
-                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex)}})")
+                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex), 'iteration': EXECUTION_ID}})")
                         lines.append(f"{inner_pad}    raise")
                     else:
                         lines.append(node.to_code(indent=base_indent + 4))
@@ -1343,8 +1370,14 @@ def generate_script(
             lines.append("        except _StopIterationExecution as _stop_ex:")
             lines.append("            _log_stop_event(_stop_ex, _context='scheduler_loop')")
             lines.append("            _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
+            lines.append("        except Exception as _loop_ex:")
+            lines.append("            _logger.error(\"Unhandled exception in scheduler iteration %s:\\n%s\", EXECUTION_ID, traceback.format_exc())")
+            lines.append("            _final_output = {'status': 'error_iteration', 'error': str(_loop_ex), 'execution_id': EXECUTION_ID, 'mode': 'error', 'branches': {}, 'terminals': [], 'legacy_items': []}")
+            if debug:
+                lines.append("        finally:")
+                lines.append("            _write_results_table_log(_iteration=EXECUTION_ID)")
             lines.append("")
-        if debug:
+        elif debug:
             lines.append("        _write_results_table_log(_iteration=EXECUTION_ID)")
             lines.append("")
 
@@ -1380,6 +1413,7 @@ import os
 import json
 import time
 import logging
+import ssl
 import uuid
 import re
 import base64
@@ -1667,7 +1701,7 @@ def _decode_http_body(_raw):
     except Exception:
         return _text
 
-def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
+def _perform_http_request(method, url, headers, body_obj, timeout_seconds, ssl_mode='strict'):
     _result = {
         "ok": False,
         "status_code": None,
@@ -1686,9 +1720,17 @@ def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
         if "Content-Type" not in _headers and "content-type" not in {k.lower(): k for k in _headers}:
             _headers["Content-Type"] = "application/json"
 
+    _ssl_mode = str(ssl_mode or 'strict').strip().lower()
+    if _ssl_mode == 'strict':
+        _ssl_context = ssl.create_default_context()
+    elif _ssl_mode == 'insecure':
+        _ssl_context = ssl._create_unverified_context()
+    else:
+        raise ValueError(f"Unsupported ssl_mode: {_ssl_mode}")
+
     _req = _UrlRequest(url=url, method=method, headers=_headers, data=_data)
     try:
-        with _urlopen(_req, timeout=float(timeout_seconds)) as _resp:
+        with _urlopen(_req, timeout=float(timeout_seconds), context=_ssl_context) as _resp:
             _raw = _resp.read(_MAX_RESPONSE_BODY_BYTES + 1)
             if len(_raw) > _MAX_RESPONSE_BODY_BYTES:
                 raise ValueError(f"Response body too large (>{_MAX_RESPONSE_BODY_BYTES} bytes)")

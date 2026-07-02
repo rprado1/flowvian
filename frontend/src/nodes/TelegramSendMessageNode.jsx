@@ -3,6 +3,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select, SelectContent, SelectItem,
+  SelectTrigger, SelectValue,
+} from '@/components/ui/select';
 
 export default function TelegramSendMessageNode({ data }) {
   const chatId = data.config?.chat_id || '${TELEGRAM_CHAT_ID}';
@@ -21,6 +25,7 @@ export default function TelegramSendMessageNode({ data }) {
 
 export function TelegramSendMessagePropsForm({ config, onChange }) {
   const includeFields = !!config.include_other_input_fields;
+  const sslMode = config.ssl_mode || 'strict';
 
   return (
     <div className="space-y-3">
@@ -78,6 +83,28 @@ export function TelegramSendMessagePropsForm({ config, onChange }) {
         <Label htmlFor="telegram-disable-notification" className="text-sm text-muted-foreground cursor-pointer">
           Disable Notification
         </Label>
+      </div>
+
+      <div className="prop-group">
+        <Label>TLS Mode</Label>
+        <Select
+          value={sslMode}
+          onValueChange={value => onChange({ ...config, ssl_mode: value })}
+        >
+          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="strict">Strict (recommended)</SelectItem>
+            <SelectItem value="insecure">Insecure (skip cert validation)</SelectItem>
+          </SelectContent>
+        </Select>
+        {sslMode === 'insecure' && (
+          <p className="text-[11px] text-amber-600">
+            Warning: insecure mode disables TLS certificate validation and can expose requests to MITM attacks.
+          </p>
+        )}
+        <p className="text-[11px] text-muted-foreground">
+          Recommendation: for corporate TLS inspection, use a Custom CA bundle approach in future hardening.
+        </p>
       </div>
 
       <div className="prop-group">

@@ -354,6 +354,7 @@ export const NODE_META = {
       chat_id: '${TELEGRAM_CHAT_ID}',
       message: 'Workflow finalizado para ${customer_name}',
       disable_notification: false,
+      ssl_mode: 'strict',
       output_var: 'telegram_result',
       include_other_input_fields: true,
     }),
