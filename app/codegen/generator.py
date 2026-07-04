@@ -61,6 +61,8 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     TelegramSendMessageNode.NODE_TYPE: TelegramSendMessageNode
 }
 
+TRIGGER_NODE_TYPES = {SchedulerNode.NODE_TYPE, WebhookNode.NODE_TYPE}
+
 SCRIPT_HEADER = '''\
 # ============================================================
 # Auto-generated workflow script
@@ -782,6 +784,24 @@ def _collect_downstream_subgraph(
     return sub_nodes, sub_edges
 
 
+def _get_trigger_nodes(nodes: list[dict]) -> list[dict]:
+    return [n for n in nodes if n.get("type") in TRIGGER_NODE_TYPES]
+
+
+def _resolve_execution_subgraph(
+    nodes: list[dict],
+    edges: list[dict],
+) -> tuple[dict, list[dict], list[dict]]:
+    trigger_nodes = _get_trigger_nodes(nodes)
+    if len(trigger_nodes) != 1:
+        raise ValueError("Workflow must have exactly one trigger node: Webhook or Scheduler")
+
+    trigger_node = trigger_nodes[0]
+    trigger_node_id = str(trigger_node["id"])
+    sub_nodes, sub_edges = _collect_downstream_subgraph(nodes, edges, trigger_node_id)
+    return trigger_node, sub_nodes, sub_edges
+
+
 def _topological_waves(nodes: list[dict], edges: list[dict]) -> list[list[dict]]:
     """
     Returns nodes grouped into execution waves using Kahn's BFS algorithm.
@@ -1129,7 +1149,7 @@ def _emit_waves(
     lines.append("")
 
 
-def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
+def validate_graph(nodes: list[dict], edges: list[dict], require_trigger: bool = False) -> list[str]:
     """Validate all nodes and return a flat list of error messages."""
     errors: list[str] = []
 
@@ -1137,16 +1157,15 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
         errors.append("Workflow has no nodes")
         return errors
 
-    # Detect multiple scheduler nodes
+    # Trigger validation
     scheduler_nodes = [n for n in nodes if n["type"] == SchedulerNode.NODE_TYPE]
-    if len(scheduler_nodes) > 1:
-        errors.append("Only one Scheduler node is allowed per workflow")
-
     webhook_nodes = [n for n in nodes if n["type"] == WebhookNode.NODE_TYPE]
-    if len(webhook_nodes) > 1:
-        errors.append("Only one Webhook node is allowed per workflow")
-    if webhook_nodes and scheduler_nodes:
-        errors.append("Webhook and Scheduler nodes cannot be used together")
+    trigger_nodes = scheduler_nodes + webhook_nodes
+
+    if len(trigger_nodes) > 1:
+        errors.append("Only one trigger node is allowed per workflow (Webhook or Scheduler)")
+    if require_trigger and len(trigger_nodes) == 0:
+        errors.append("Workflow must have exactly one trigger node: Webhook or Scheduler")
 
     incoming_count: dict[str, int] = defaultdict(int)
     for edge in edges:
@@ -1160,9 +1179,9 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
                 f"Only 'merge' nodes can have multiple incoming edges "
                 f"(has {incoming_count[node_id]})"
             )
-        if node_data["type"] == WebhookNode.NODE_TYPE and incoming_count[node_id] > 0:
+        if node_data["type"] in TRIGGER_NODE_TYPES and incoming_count[node_id] > 0:
             errors.append(
-                f"[{node_data.get('label', node_id)}] Webhook node cannot have incoming edges"
+                f"[{node_data.get('label', node_id)}] Trigger node cannot have incoming edges"
             )
 
     for node_data in nodes:
@@ -1213,16 +1232,11 @@ def generate_script(
     Independent branches at the same topological level are executed in parallel.
     Returns the script as a string.
     """
-    errors = validate_graph(nodes, edges)
+    trigger_node, graph_nodes, graph_edges = _resolve_execution_subgraph(nodes, edges)
+
+    errors = validate_graph(graph_nodes, graph_edges, require_trigger=True)
     if errors:
         raise ValueError("Validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
-
-    webhook_nodes = [n for n in nodes if n["type"] == WebhookNode.NODE_TYPE]
-    if webhook_nodes:
-        webhook_node_id = str(webhook_nodes[0]["id"])
-        graph_nodes, graph_edges = _collect_downstream_subgraph(nodes, edges, webhook_node_id)
-    else:
-        graph_nodes, graph_edges = nodes, edges
 
     waves = _topological_waves(graph_nodes, graph_edges)
 
@@ -1262,7 +1276,7 @@ def generate_script(
         if webhook_wave_idx is not None:
             break
 
-    if webhook_wave_idx is not None:
+    if trigger_node["type"] == WebhookNode.NODE_TYPE and webhook_wave_idx is not None:
         webhook_wave = waves[webhook_wave_idx]
         webhook_node_data = next(
             nd for nd in webhook_wave if nd["type"] == WebhookNode.NODE_TYPE
@@ -1804,16 +1818,11 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     The trace file path is passed via the WORKFLOW_TRACE_PATH environment variable.
     Returns the script as a string.
     """
-    errors = validate_graph(nodes, edges)
+    trigger_node, graph_nodes, graph_edges = _resolve_execution_subgraph(nodes, edges)
+
+    errors = validate_graph(graph_nodes, graph_edges, require_trigger=True)
     if errors:
         raise ValueError("Validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
-
-    webhook_nodes = [n for n in nodes if n["type"] == WebhookNode.NODE_TYPE]
-    if webhook_nodes:
-        webhook_node_id = str(webhook_nodes[0]["id"])
-        graph_nodes, graph_edges = _collect_downstream_subgraph(nodes, edges, webhook_node_id)
-    else:
-        graph_nodes, graph_edges = nodes, edges
 
     waves = _topological_waves(graph_nodes, graph_edges)
 
@@ -1823,8 +1832,8 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     ]
     lines.append(RUN_SCRIPT_HEADER)
 
-    if webhook_nodes:
-        webhook_node_data = webhook_nodes[0]
+    if trigger_node["type"] == WebhookNode.NODE_TYPE:
+        webhook_node_data = trigger_node
         webhook_config = webhook_node_data.get("config", {}) if isinstance(webhook_node_data.get("config", {}), dict) else {}
         webhook_method = str(webhook_config.get("method", "POST")).strip().upper() or "POST"
         webhook_host = str(webhook_config.get("host", "0.0.0.0")).strip() or "0.0.0.0"

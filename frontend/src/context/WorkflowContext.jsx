@@ -5,6 +5,7 @@ import { api } from '@/api';
 import { toast } from 'sonner';
 
 const WorkflowContext = createContext(null);
+const TRIGGER_NODE_TYPES = new Set(['webhook', 'scheduler']);
 
 export function WorkflowProvider({ children }) {
   const [recentNodeTypes, setRecentNodeTypes] = useState(() => {
@@ -134,6 +135,14 @@ export function WorkflowProvider({ children }) {
     if (!currentWfId) return false;
     if (!NODE_META[type]) return false;
 
+    if (TRIGGER_NODE_TYPES.has(type)) {
+      const hasTrigger = nodes.some((node) => TRIGGER_NODE_TYPES.has(String(node.type || '')));
+      if (hasTrigger) {
+        toast.error('Solo se permite un trigger por workflow');
+        return false;
+      }
+    }
+
     const fallbackPosition = {
       x: 120 + ((nodes.length % 5) * 60),
       y: 120 + ((nodes.length % 6) * 50),
@@ -160,7 +169,7 @@ export function WorkflowProvider({ children }) {
     setSelectedNodeId(nextId);
     pushRecentNodeType(type);
     return true;
-  }, [currentWfId, nodes.length, setNodes, generateInstanceName, scheduleSave, edges, setSelectedNodeId, pushRecentNodeType]);
+  }, [currentWfId, nodes, setNodes, generateInstanceName, scheduleSave, edges, setSelectedNodeId, pushRecentNodeType]);
 
   // ── Workflow CRUD ─────────────────────────────────────────────────────
   const loadWorkflows = useCallback(async () => {

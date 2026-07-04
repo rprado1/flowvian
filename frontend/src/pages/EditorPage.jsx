@@ -13,6 +13,15 @@ import BuildOptionsModal from '@/components/modals/BuildOptionsModal';
 import RenameModal from '@/components/modals/RenameModal';
 import { useBuild } from '@/hooks/useBuild';
 
+function getTriggerDiagnostics(nodes) {
+  const triggerTypes = new Set(['webhook', 'scheduler']);
+  const triggerNodes = (nodes || []).filter((node) => triggerTypes.has(String(node?.type || '')));
+  return {
+    count: triggerNodes.length,
+    triggerNodes,
+  };
+}
+
 export default function EditorPage() {
   const navigate = useNavigate();
   const { workflowId } = useParams();
@@ -29,6 +38,19 @@ export default function EditorPage() {
   const [buildLog, setBuildLog] = useState(null);
   const [showBuildOptions, setShowBuildOptions] = useState(false);
   const [runStateMsg, setRunStateMsg] = useState('');
+
+  const ensureExecutableTrigger = () => {
+    const diagnostics = getTriggerDiagnostics(nodes);
+    if (diagnostics.count === 0) {
+      toast.error('El workflow debe tener un trigger (Webhook o Scheduler) para ejecutarse.');
+      return false;
+    }
+    if (diagnostics.count > 1) {
+      toast.error('Solo se permite un trigger por workflow.');
+      return false;
+    }
+    return true;
+  };
 
   const handleExportTemplate = async () => {
     if (!workflowId) return toast.error('Open a workspace first');
@@ -130,6 +152,7 @@ export default function EditorPage() {
 
   const handlePreview = async () => {
     if (!workflowId) return toast.error('Open a workspace first');
+    if (!ensureExecutableTrigger()) return;
     await saveGraph(nodes, edges);
     try {
       const data = await api('POST', `/api/workflows/${workflowId}/preview`);
@@ -141,6 +164,7 @@ export default function EditorPage() {
 
   const handleRun = async () => {
     if (!workflowId) return toast.error('Open a workspace first');
+    if (!ensureExecutableTrigger()) return;
     await saveGraph(nodes, edges);
     setRunning(true);
     setRunStateMsg('Starting run...');
@@ -200,6 +224,7 @@ export default function EditorPage() {
 
   const handleBuild = async (debug = false) => {
     if (!workflowId) return toast.error('Open a workspace first');
+    if (!ensureExecutableTrigger()) return;
     await saveGraph(nodes, edges);
     toast.info('Building .exe — this may take a minute…');
     buildExe(workflowId, {

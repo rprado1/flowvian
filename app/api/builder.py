@@ -70,7 +70,7 @@ def validate(workflow_id):
         return jsonify({"error": "not found"}), 404
 
     graph  = get_workflow_graph(data_dir(), workflow_id)
-    errors = validate_graph(graph["nodes"], graph["edges"])
+    errors = validate_graph(graph["nodes"], graph["edges"], require_trigger=True)
     if errors:
         return jsonify({"valid": False, "errors": errors}), 422
     return jsonify({"valid": True, "errors": []})
