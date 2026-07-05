@@ -161,9 +161,9 @@ def _set_current_node_label(_label):
     _current_node_label = str(_label or "")
 
 def _load_master_key():
-    _raw = os.environ.get("W_METADATA_1", "").strip()
+    _raw = os.environ.get("WBUI_METADATA_1", "").strip()
     if not _raw:
-        raise ValueError("Missing required environment variable: W_METADATA_1")
+        raise ValueError("Missing required environment variable: WBUI_METADATA_1")
     return _raw.encode("utf-8")
 
 def _derive_stream_key(_master_key, _salt):
@@ -1473,9 +1473,9 @@ def _set_current_node_label(_label):
     _current_node_label = str(_label or "")
 
 def _load_master_key():
-    _raw = os.environ.get("W_METADATA_1", "").strip()
+    _raw = os.environ.get("WBUI_METADATA_1", "").strip()
     if not _raw:
-        raise ValueError("Missing required environment variable: W_METADATA_1")
+        raise ValueError("Missing required environment variable: WBUI_METADATA_1")
     return _raw.encode("utf-8")
 
 def _derive_stream_key(_master_key, _salt):

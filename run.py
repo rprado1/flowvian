@@ -5,8 +5,9 @@ from app.main import app
 
 
 def main(port=None):
-    final_port = int(port or os.getenv("PORT", "5007"))
+    final_port = int(port or os.getenv("WBUI_PORT", "5007"))
     use_flask_dev_server = os.getenv("WBUI_USE_FLASK_DEV_SERVER") == "1"
+    print(f"[wbui] Listening on: http://127.0.0.1:{final_port}")
 
     if use_flask_dev_server:
         # Development-only mode.

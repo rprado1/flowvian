@@ -65,6 +65,46 @@ Migration note:
 - The app starts with a clean per-user storage model and does not auto-copy data from repo-local folders.
 - To force a clean start, remove `%APPDATA%\\WorkflowBuilder`.
 
+### Environment variables
+
+The application supports the following environment variables.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `WBUI_PORT` | Server port used by `wbui start` when `-p` is not provided. | `5007` |
+| `WBUI_DATA_DIR` | Custom data directory (SQLite files and workflow metadata). | OS-specific user directory |
+| `WBUI_OUTPUT_DIR` | Custom output directory (generated scripts/build artifacts/logs). | OS-specific user directory |
+| `WBUI_USE_FLASK_DEV_SERVER` | Use Flask development server (`1`) instead of Waitress. | `0` (Waitress) |
+| `WBUI_HTTP_LOG` | HTTP request logging toggle (`1` enabled, `0` disabled). | `1` |
+| `WBUI_METADATA_1` | Master key for encrypting/decrypting secret values in workflow config. Required when using encrypted secrets. | Not set |
+
+Examples:
+
+```bash
+# Use a custom port
+WBUI_PORT=5010 wbui start
+
+# Use a custom data/output location
+WBUI_DATA_DIR="C:/wbui-data" WBUI_OUTPUT_DIR="C:/wbui-output" wbui start
+
+# Use Flask dev server and disable HTTP logs
+WBUI_USE_FLASK_DEV_SERVER=1 WBUI_HTTP_LOG=0 wbui start
+
+# Run with explicit CLI port (takes precedence over WBUI_PORT)
+WBUI_PORT=5007 wbui start -p 5055
+```
+
+Windows PowerShell examples:
+
+```powershell
+$env:WBUI_PORT = "5010"
+wbui start
+
+$env:WBUI_DATA_DIR = "C:\wbui-data"
+$env:WBUI_OUTPUT_DIR = "C:\wbui-output"
+wbui start
+```
+
 ---
 
 ## Installation

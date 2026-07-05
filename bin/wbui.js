@@ -51,7 +51,7 @@ function runStart() {
     stdio: 'inherit',
     env: {
       ...process.env,
-      PORT: process.env.PORT || '5007',
+      WBUI_PORT: process.env.WBUI_PORT || '5007',
     },
   });
 
