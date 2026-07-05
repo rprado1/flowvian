@@ -19,9 +19,91 @@ Design the flow by dragging nodes onto an drag-style canvas, configure each step
 
 ## Requirements
 
-- **Python 3.9+**
-- **Node.js 18+** and npm (required to rebuild the frontend)
-- **Windows** — the generated `.exe` is Windows-only
+- **End users (PyPI install):** Python 3.9+ (Node.js is not required to run)
+- **Contributors (source code mode):** Python 3.9+, Node.js 18+, npm
+
+---
+
+## PyPI installation (end users)
+
+Install and run:
+
+```bash
+pip install workflow-builder
+wbui start
+```
+
+Optional port:
+
+```bash
+wbui start -p 5007
+```
+
+Open `http://localhost:5007` in your browser.
+
+Runtime note:
+
+- `wbui start` uses Waitress (production WSGI server) by default.
+- To force Flask development server for debugging, set `WBUI_USE_FLASK_DEV_SERVER=1`.
+- HTTP request logs are enabled by default. To disable them, set `WBUI_HTTP_LOG=0`.
+
+### Data and output directories
+
+By default, Workflow Builder stores runtime data in a per-user folder:
+
+- Windows: `%APPDATA%\\WorkflowBuilder\\data` and `%APPDATA%\\WorkflowBuilder\\output`
+- Linux: `~/.config/workflow-builder/data` and `~/.config/workflow-builder/output`
+- macOS: `~/Library/Application Support/WorkflowBuilder/data` and `~/Library/Application Support/WorkflowBuilder/output`
+
+You can override these locations with:
+
+- `WBUI_DATA_DIR`
+- `WBUI_OUTPUT_DIR`
+
+Migration note:
+
+- The app starts with a clean per-user storage model and does not auto-copy data from repo-local folders.
+- To force a clean start, remove `%APPDATA%\\WorkflowBuilder`.
+
+### Environment variables
+
+The application supports the following environment variables.
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `WBUI_PORT` | Server port used by `wbui start` when `-p` is not provided. | `5007` |
+| `WBUI_DATA_DIR` | Custom data directory (SQLite files and workflow metadata). | OS-specific user directory |
+| `WBUI_OUTPUT_DIR` | Custom output directory (generated scripts/build artifacts/logs). | OS-specific user directory |
+| `WBUI_USE_FLASK_DEV_SERVER` | Use Flask development server (`1`) instead of Waitress. | `0` (Waitress) |
+| `WBUI_HTTP_LOG` | HTTP request logging toggle (`1` enabled, `0` disabled). | `1` |
+| `WBUI_METADATA_1` | Master key for encrypting/decrypting secret values in workflow config. Required when using encrypted secrets. | Not set |
+
+Examples:
+
+```bash
+# Use a custom port
+WBUI_PORT=5010 wbui start
+
+# Use a custom data/output location
+WBUI_DATA_DIR="C:/wbui-data" WBUI_OUTPUT_DIR="C:/wbui-output" wbui start
+
+# Use Flask dev server and disable HTTP logs
+WBUI_USE_FLASK_DEV_SERVER=1 WBUI_HTTP_LOG=0 wbui start
+
+# Run with explicit CLI port (takes precedence over WBUI_PORT)
+WBUI_PORT=5007 wbui start -p 5055
+```
+
+Windows PowerShell examples:
+
+```powershell
+$env:WBUI_PORT = "5010"
+wbui start
+
+$env:WBUI_DATA_DIR = "C:\wbui-data"
+$env:WBUI_OUTPUT_DIR = "C:\wbui-output"
+wbui start
+```
 
 ---
 
@@ -71,7 +153,7 @@ cd ..
 python run.py
 ```
 
-Open `http://localhost:5000` in your browser.
+Open `http://localhost:5007` in your browser.
 
 > Always run from the project root with the venv active.
 
@@ -99,9 +181,9 @@ cd frontend
 npm run dev
 ```
 
-Open `http://localhost:5173`. Vite proxies `/api/*` requests to Flask on `:5000`.
+Open `http://localhost:5173`. Vite proxies `/api/*` requests to Flask on `:5007`.
 
-**3. Build for production (required for Flask to serve the app at `:5000`):**
+**3. Build for production (required for Flask to serve the app at `:5007`):**
 
 ```bash
 cd frontend
@@ -371,6 +453,7 @@ Required config:
 Optional config:
 
 - `disable_notification`
+- `ssl_mode` (`strict` default, or `insecure`)
 - `output_var` (default: `telegram_result`)
 
 Notes:
@@ -385,6 +468,9 @@ Notes:
   - `chat_id`
   - `response`
   - `error_message`
+  - `tls_mode`
+- `ssl_mode=insecure` disables TLS certificate validation. Use only as a temporary workaround.
+- Recommended future hardening for inspected networks: support/use a Custom CA bundle approach.
 
 ---
 
@@ -441,7 +527,7 @@ When using Scheduler, each loop tick starts with a fresh execution context (`exe
 4. Wait for compilation (may take ~1 minute the first time due to PyInstaller analysis)
 5. Download the `.exe` from the result dialog
 
-When built with debug and used with a Scheduler workflow, each loop iteration appends a JSON line with the full results table to `<workflow_name>_debug.log` next to the executable.
+When built with debug, each executed node appends a JSON line immediately to `<workflow_name>_debug.log` next to the executable, including node id/label/type, status, input (`items_in`), and output (`items_out`/`outputs`) or error details. In Scheduler workflows, an additional per-iteration summary line is appended with the full `results_table`.
 
 The executable is standalone (`--onefile`) and does not require Python installed on the target machine.
 
@@ -451,7 +537,7 @@ The executable is standalone (`--onefile`) and does not require Python installed
 
 ```
 workflow-exe/
-├── run.py                     # Entry point — starts Flask on :5000
+├── run.py                     # Entry point — starts Flask on :5007
 ├── requirements.txt           # flask, pyinstaller
 ├── frontend/                  # React source (Vite)
 │   ├── src/
@@ -521,7 +607,7 @@ workflow-exe/
 
 `POST /build` accepts optional JSON body:
 
-- `debug` (boolean, default `false`): when `true`, generated EXE writes per-iteration results table debug logs for Scheduler workflows.
+- `debug` (boolean, default `false`): when `true`, generated EXE writes real-time per-node debug logs (`items_in`/`items_out`) and per-iteration summaries for Scheduler workflows.
 
 ---
 

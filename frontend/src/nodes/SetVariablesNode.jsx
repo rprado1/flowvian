@@ -23,7 +23,7 @@ export default function SetVariablesNode({ data }) {
                 </span>
               </TooltipTrigger>
               <TooltipContent className="max-w-[260px] text-xs leading-relaxed">
-                Secret variables require env var <code>W_METADATA_1</code>. Example: <code>W_METADATA_1=&quot;&lt;MASTER_KEY_BASE64&gt;&quot;</code>
+                Secret variables require env var <code>WBUI_METADATA_1</code>. Example: <code>WBUI_METADATA_1=&quot;&lt;MASTER_KEY_BASE64&gt;&quot;</code>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -96,7 +96,7 @@ export function SetVariablesPropsForm({ config, onChange }) {
                 </button>
               </TooltipTrigger>
               <TooltipContent className="max-w-[320px] text-xs leading-relaxed">
-                Configure environment variable <code>W_METADATA_1</code> before run/build. Example: <code>W_METADATA_1=&quot;&lt;MASTER_KEY_BASE64&gt;&quot;</code>
+                Configure environment variable <code>WBUI_METADATA_1</code> before run/build. Example: <code>WBUI_METADATA_1=&quot;&lt;MASTER_KEY_BASE64&gt;&quot;</code>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -175,7 +175,7 @@ export function SetVariablesPropsForm({ config, onChange }) {
 
           <p className="text-[11px] text-muted-foreground">
               {normalizeType(v.type) === 'secret'
-                ? 'Stored encrypted. Configure W_METADATA_1 to decrypt at runtime.'
+                ? 'Stored encrypted. Configure WBUI_METADATA_1 to decrypt at runtime.'
                 : getMode(v) === 'path'
                 ? 'Use path notation like args.country or items[0].id.'
                 : getScope(v) === 'global'

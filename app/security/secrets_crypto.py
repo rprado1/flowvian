@@ -7,7 +7,7 @@ import os
 from typing import Optional
 
 
-ENV_MASTER_KEY = "W_METADATA_1"
+ENV_MASTER_KEY = "WBUI_METADATA_1"
 ENCRYPTED_PREFIX = "enc:v1:"
 SECRET_MASK = "********"
 

@@ -61,6 +61,8 @@ NODE_REGISTRY: dict[str, type[BaseNode]] = {
     TelegramSendMessageNode.NODE_TYPE: TelegramSendMessageNode
 }
 
+TRIGGER_NODE_TYPES = {SchedulerNode.NODE_TYPE, WebhookNode.NODE_TYPE}
+
 SCRIPT_HEADER = '''\
 # ============================================================
 # Auto-generated workflow script
@@ -72,6 +74,8 @@ import json
 import time
 import logging
 import traceback
+import ssl
+import threading
 import uuid
 import re
 import base64
@@ -111,12 +115,33 @@ _stop_path = os.environ.get("WORKFLOW_STOP_PATH", "")
 _debug_enabled = bool(globals().get("WORKFLOW_DEBUG", False))
 _debug_log_path = os.path.join(_exe_dir, WORKFLOW_NAME.replace(" ", "_") + "_debug.log")
 _results_table = []
+_debug_log_lock = threading.Lock()
+
+def _write_debug_log_entry(_payload):
+    if not _debug_enabled:
+        return
+    try:
+        with _debug_log_lock:
+            with open(_debug_log_path, "a", encoding="utf-8") as _f:
+                _f.write(json.dumps(_payload, ensure_ascii=False, default=str))
+                _f.write("\\n")
+    except Exception:
+        pass
 
 def _append_results_table_row(_row):
     if not _debug_enabled:
         return
     if isinstance(_row, dict):
-        _results_table.append(_row)
+        _row_copy = dict(_row)
+        _results_table.append(_row_copy)
+        _write_debug_log_entry({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "workflow_id": WORKFLOW_ID,
+            "workflow_name": WORKFLOW_NAME,
+            "iteration": _row_copy.get("iteration"),
+            "event": "node_result",
+            "row": _row_copy,
+        })
 
 def _write_results_table_log(_iteration=None):
     if not _debug_enabled:
@@ -126,23 +151,19 @@ def _write_results_table_log(_iteration=None):
         "workflow_id": WORKFLOW_ID,
         "workflow_name": WORKFLOW_NAME,
         "iteration": _iteration,
+        "event": "iteration_summary",
         "results_table": list(_results_table),
     }
-    try:
-        with open(_debug_log_path, "a", encoding="utf-8") as _f:
-            _f.write(json.dumps(_payload, ensure_ascii=False, default=str))
-            _f.write("\\n")
-    except Exception:
-        pass
+    _write_debug_log_entry(_payload)
 
 def _set_current_node_label(_label):
     global _current_node_label
     _current_node_label = str(_label or "")
 
 def _load_master_key():
-    _raw = os.environ.get("W_METADATA_1", "").strip()
+    _raw = os.environ.get("WBUI_METADATA_1", "").strip()
     if not _raw:
-        raise ValueError("Missing required environment variable: W_METADATA_1")
+        raise ValueError("Missing required environment variable: WBUI_METADATA_1")
     return _raw.encode("utf-8")
 
 def _derive_stream_key(_master_key, _salt):
@@ -391,7 +412,7 @@ def _decode_http_body(_raw):
     except Exception:
         return _text
 
-def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
+def _perform_http_request(method, url, headers, body_obj, timeout_seconds, ssl_mode='strict'):
     _result = {
         "ok": False,
         "status_code": None,
@@ -410,9 +431,17 @@ def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
         if "Content-Type" not in _headers and "content-type" not in {k.lower(): k for k in _headers}:
             _headers["Content-Type"] = "application/json"
 
+    _ssl_mode = str(ssl_mode or 'strict').strip().lower()
+    if _ssl_mode == 'strict':
+        _ssl_context = ssl.create_default_context()
+    elif _ssl_mode == 'insecure':
+        _ssl_context = ssl._create_unverified_context()
+    else:
+        raise ValueError(f"Unsupported ssl_mode: {_ssl_mode}")
+
     _req = _UrlRequest(url=url, method=method, headers=_headers, data=_data)
     try:
-        with _urlopen(_req, timeout=float(timeout_seconds)) as _resp:
+        with _urlopen(_req, timeout=float(timeout_seconds), context=_ssl_context) as _resp:
             _raw = _resp.read(_MAX_RESPONSE_BODY_BYTES + 1)
             if len(_raw) > _MAX_RESPONSE_BODY_BYTES:
                 raise ValueError(f"Response body too large (>{_MAX_RESPONSE_BODY_BYTES} bytes)")
@@ -755,6 +784,24 @@ def _collect_downstream_subgraph(
     return sub_nodes, sub_edges
 
 
+def _get_trigger_nodes(nodes: list[dict]) -> list[dict]:
+    return [n for n in nodes if n.get("type") in TRIGGER_NODE_TYPES]
+
+
+def _resolve_execution_subgraph(
+    nodes: list[dict],
+    edges: list[dict],
+) -> tuple[dict, list[dict], list[dict]]:
+    trigger_nodes = _get_trigger_nodes(nodes)
+    if len(trigger_nodes) != 1:
+        raise ValueError("Workflow must have exactly one trigger node: Webhook or Scheduler")
+
+    trigger_node = trigger_nodes[0]
+    trigger_node_id = str(trigger_node["id"])
+    sub_nodes, sub_edges = _collect_downstream_subgraph(nodes, edges, trigger_node_id)
+    return trigger_node, sub_nodes, sub_edges
+
+
 def _topological_waves(nodes: list[dict], edges: list[dict]) -> list[list[dict]]:
     """
     Returns nodes grouped into execution waves using Kahn's BFS algorithm.
@@ -957,12 +1004,12 @@ def _emit_waves(
                     lines.append(f"{pad}        _node_outputs_norm['output_1'] = list(_items_after)")
                     lines.append(f"{pad}    _node_items[{node_id!r}] = _items_after")
                     lines.append(f"{pad}    _node_outputs[{node_id!r}] = _node_outputs_norm")
-                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after}})")
+                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after, 'outputs': _node_outputs_norm, 'iteration': EXECUTION_ID}})")
                     lines.append(f"{pad}except _StopIterationExecution as _stop_ex:")
-                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message}})")
+                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message, 'iteration': EXECUTION_ID}})")
                     lines.append(f"{pad}    raise")
                     lines.append(f"{pad}except Exception as _dbg_ex:")
-                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex)}})")
+                    lines.append(f"{pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex), 'iteration': EXECUTION_ID}})")
                     lines.append(f"{pad}    raise")
                     lines.append("")
                 else:
@@ -1044,12 +1091,12 @@ def _emit_waves(
                         lines.append(f"{inner_pad}    if 'output_1' not in _node_outputs_norm:")
                         lines.append(f"{inner_pad}        _node_outputs_norm['output_1'] = list(_items_after)")
                         lines.append(f"{inner_pad}    _wave_{w_idx}_results[{b_idx}] = {{'items': _items_after, 'outputs': _node_outputs_norm, 'debug': _node_debug}}")
-                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after}})")
+                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'ok', 'items_in': _items_before, 'items_out': _items_after, 'outputs': _node_outputs_norm, 'iteration': EXECUTION_ID}})")
                         lines.append(f"{inner_pad}except _StopIterationExecution as _stop_ex:")
-                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message}})")
+                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'stopped_current_execution', 'items_in': _items_before, 'error': _stop_ex.message, 'iteration': EXECUTION_ID}})")
                         lines.append(f"{inner_pad}    raise")
                         lines.append(f"{inner_pad}except Exception as _dbg_ex:")
-                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex)}})")
+                        lines.append(f"{inner_pad}    _append_results_table_row({{'index': len(_results_table) + 1, 'id': {node_id!r}, 'label': {node_label!r}, 'type': {node_type!r}, 'ts': time.time(), 'status': 'error', 'items_in': _items_before, 'error': str(_dbg_ex), 'iteration': EXECUTION_ID}})")
                         lines.append(f"{inner_pad}    raise")
                     else:
                         lines.append(node.to_code(indent=base_indent + 4))
@@ -1102,7 +1149,7 @@ def _emit_waves(
     lines.append("")
 
 
-def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
+def validate_graph(nodes: list[dict], edges: list[dict], require_trigger: bool = False) -> list[str]:
     """Validate all nodes and return a flat list of error messages."""
     errors: list[str] = []
 
@@ -1110,16 +1157,15 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
         errors.append("Workflow has no nodes")
         return errors
 
-    # Detect multiple scheduler nodes
+    # Trigger validation
     scheduler_nodes = [n for n in nodes if n["type"] == SchedulerNode.NODE_TYPE]
-    if len(scheduler_nodes) > 1:
-        errors.append("Only one Scheduler node is allowed per workflow")
-
     webhook_nodes = [n for n in nodes if n["type"] == WebhookNode.NODE_TYPE]
-    if len(webhook_nodes) > 1:
-        errors.append("Only one Webhook node is allowed per workflow")
-    if webhook_nodes and scheduler_nodes:
-        errors.append("Webhook and Scheduler nodes cannot be used together")
+    trigger_nodes = scheduler_nodes + webhook_nodes
+
+    if len(trigger_nodes) > 1:
+        errors.append("Only one trigger node is allowed per workflow (Webhook or Scheduler)")
+    if require_trigger and len(trigger_nodes) == 0:
+        errors.append("Workflow must have exactly one trigger node: Webhook or Scheduler")
 
     incoming_count: dict[str, int] = defaultdict(int)
     for edge in edges:
@@ -1133,9 +1179,9 @@ def validate_graph(nodes: list[dict], edges: list[dict]) -> list[str]:
                 f"Only 'merge' nodes can have multiple incoming edges "
                 f"(has {incoming_count[node_id]})"
             )
-        if node_data["type"] == WebhookNode.NODE_TYPE and incoming_count[node_id] > 0:
+        if node_data["type"] in TRIGGER_NODE_TYPES and incoming_count[node_id] > 0:
             errors.append(
-                f"[{node_data.get('label', node_id)}] Webhook node cannot have incoming edges"
+                f"[{node_data.get('label', node_id)}] Trigger node cannot have incoming edges"
             )
 
     for node_data in nodes:
@@ -1186,16 +1232,11 @@ def generate_script(
     Independent branches at the same topological level are executed in parallel.
     Returns the script as a string.
     """
-    errors = validate_graph(nodes, edges)
+    trigger_node, graph_nodes, graph_edges = _resolve_execution_subgraph(nodes, edges)
+
+    errors = validate_graph(graph_nodes, graph_edges, require_trigger=True)
     if errors:
         raise ValueError("Validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
-
-    webhook_nodes = [n for n in nodes if n["type"] == WebhookNode.NODE_TYPE]
-    if webhook_nodes:
-        webhook_node_id = str(webhook_nodes[0]["id"])
-        graph_nodes, graph_edges = _collect_downstream_subgraph(nodes, edges, webhook_node_id)
-    else:
-        graph_nodes, graph_edges = nodes, edges
 
     waves = _topological_waves(graph_nodes, graph_edges)
 
@@ -1235,7 +1276,7 @@ def generate_script(
         if webhook_wave_idx is not None:
             break
 
-    if webhook_wave_idx is not None:
+    if trigger_node["type"] == WebhookNode.NODE_TYPE and webhook_wave_idx is not None:
         webhook_wave = waves[webhook_wave_idx]
         webhook_node_data = next(
             nd for nd in webhook_wave if nd["type"] == WebhookNode.NODE_TYPE
@@ -1343,8 +1384,14 @@ def generate_script(
             lines.append("        except _StopIterationExecution as _stop_ex:")
             lines.append("            _log_stop_event(_stop_ex, _context='scheduler_loop')")
             lines.append("            _final_output = {'status': 'stopped_current_execution', 'stop_reason': _stop_ex.message, 'stop_node': {'id': _stop_ex.node_id, 'type': _stop_ex.node_type}, 'mode': 'stopped', 'branches': {}, 'terminals': [], 'legacy_items': []}")
+            lines.append("        except Exception as _loop_ex:")
+            lines.append("            _logger.error(\"Unhandled exception in scheduler iteration %s:\\n%s\", EXECUTION_ID, traceback.format_exc())")
+            lines.append("            _final_output = {'status': 'error_iteration', 'error': str(_loop_ex), 'execution_id': EXECUTION_ID, 'mode': 'error', 'branches': {}, 'terminals': [], 'legacy_items': []}")
+            if debug:
+                lines.append("        finally:")
+                lines.append("            _write_results_table_log(_iteration=EXECUTION_ID)")
             lines.append("")
-        if debug:
+        elif debug:
             lines.append("        _write_results_table_log(_iteration=EXECUTION_ID)")
             lines.append("")
 
@@ -1380,6 +1427,7 @@ import os
 import json
 import time
 import logging
+import ssl
 import uuid
 import re
 import base64
@@ -1425,9 +1473,9 @@ def _set_current_node_label(_label):
     _current_node_label = str(_label or "")
 
 def _load_master_key():
-    _raw = os.environ.get("W_METADATA_1", "").strip()
+    _raw = os.environ.get("WBUI_METADATA_1", "").strip()
     if not _raw:
-        raise ValueError("Missing required environment variable: W_METADATA_1")
+        raise ValueError("Missing required environment variable: WBUI_METADATA_1")
     return _raw.encode("utf-8")
 
 def _derive_stream_key(_master_key, _salt):
@@ -1667,7 +1715,7 @@ def _decode_http_body(_raw):
     except Exception:
         return _text
 
-def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
+def _perform_http_request(method, url, headers, body_obj, timeout_seconds, ssl_mode='strict'):
     _result = {
         "ok": False,
         "status_code": None,
@@ -1686,9 +1734,17 @@ def _perform_http_request(method, url, headers, body_obj, timeout_seconds):
         if "Content-Type" not in _headers and "content-type" not in {k.lower(): k for k in _headers}:
             _headers["Content-Type"] = "application/json"
 
+    _ssl_mode = str(ssl_mode or 'strict').strip().lower()
+    if _ssl_mode == 'strict':
+        _ssl_context = ssl.create_default_context()
+    elif _ssl_mode == 'insecure':
+        _ssl_context = ssl._create_unverified_context()
+    else:
+        raise ValueError(f"Unsupported ssl_mode: {_ssl_mode}")
+
     _req = _UrlRequest(url=url, method=method, headers=_headers, data=_data)
     try:
-        with _urlopen(_req, timeout=float(timeout_seconds)) as _resp:
+        with _urlopen(_req, timeout=float(timeout_seconds), context=_ssl_context) as _resp:
             _raw = _resp.read(_MAX_RESPONSE_BODY_BYTES + 1)
             if len(_raw) > _MAX_RESPONSE_BODY_BYTES:
                 raise ValueError(f"Response body too large (>{_MAX_RESPONSE_BODY_BYTES} bytes)")
@@ -1762,16 +1818,11 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     The trace file path is passed via the WORKFLOW_TRACE_PATH environment variable.
     Returns the script as a string.
     """
-    errors = validate_graph(nodes, edges)
+    trigger_node, graph_nodes, graph_edges = _resolve_execution_subgraph(nodes, edges)
+
+    errors = validate_graph(graph_nodes, graph_edges, require_trigger=True)
     if errors:
         raise ValueError("Validation failed:\n" + "\n".join(f"  - {e}" for e in errors))
-
-    webhook_nodes = [n for n in nodes if n["type"] == WebhookNode.NODE_TYPE]
-    if webhook_nodes:
-        webhook_node_id = str(webhook_nodes[0]["id"])
-        graph_nodes, graph_edges = _collect_downstream_subgraph(nodes, edges, webhook_node_id)
-    else:
-        graph_nodes, graph_edges = nodes, edges
 
     waves = _topological_waves(graph_nodes, graph_edges)
 
@@ -1781,8 +1832,8 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
     ]
     lines.append(RUN_SCRIPT_HEADER)
 
-    if webhook_nodes:
-        webhook_node_data = webhook_nodes[0]
+    if trigger_node["type"] == WebhookNode.NODE_TYPE:
+        webhook_node_data = trigger_node
         webhook_config = webhook_node_data.get("config", {}) if isinstance(webhook_node_data.get("config", {}), dict) else {}
         webhook_method = str(webhook_config.get("method", "POST")).strip().upper() or "POST"
         webhook_host = str(webhook_config.get("host", "0.0.0.0")).strip() or "0.0.0.0"
@@ -1922,7 +1973,10 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("    _path = str(path or '/webhook').strip() or '/webhook'")
         lines.append("    if not _path.startswith('/'):")
         lines.append("        _path = '/' + _path")
-        lines.append("    _state = {'handled': False}")
+        lines.append("    _listen_host = str(host or '0.0.0.0').strip() or '0.0.0.0'")
+        lines.append("    if _listen_host in ('127.0.0.1', 'localhost'):")
+        lines.append("        _listen_host = '0.0.0.0'")
+        lines.append("    _state = {'handled': False, 'request_count': 0, 'last_request_method': None, 'last_request_path': None, 'last_error': None}")
         lines.append("    class _OneShotWebhookHandler(_BaseHTTPRequestHandler):")
         lines.append("        protocol_version = 'HTTP/1.0'")
         lines.append("        def _send_json(self, _status, _payload, _extra_headers=None):")
@@ -1946,14 +2000,27 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("            _state['handled'] = True")
         lines.append("            _req_method = str(self.command or '').upper()")
         lines.append("            _parsed = _urlparse(self.path)")
+        lines.append("            _state['request_count'] = int(_state.get('request_count', 0)) + 1")
+        lines.append("            _state['last_request_method'] = _req_method")
+        lines.append("            _state['last_request_path'] = _parsed.path")
         lines.append("            if _req_method not in _allowed:")
+        lines.append("                _state['handled'] = False")
+        lines.append("                _state['last_error'] = 'method_not_allowed'")
+        lines.append("                _write_run_state('running', phase='waiting_webhook', method=_method, host=str(host), port=int(port), path=_path, timeout_seconds=_timeout_total, last_request_method=_req_method, last_request_path=_parsed.path, last_error='method_not_allowed')")
         lines.append("                self._send_json(405, {'ok': False, 'error': f'Method {_req_method} not allowed'})")
         lines.append("                _final_output = {'status': 'webhook_error', 'error': f'Method {_req_method} not allowed'}")
         lines.append("                return")
-        lines.append("            if _parsed.path != _path:")
-        lines.append("                self._send_json(404, {'ok': False, 'error': 'Webhook path not found'})")
+        lines.append("            _normalized_req_path = _parsed.path.rstrip('/') or '/'")
+        lines.append("            _normalized_cfg_path = _path.rstrip('/') or '/'")
+        lines.append("            if _normalized_req_path != _normalized_cfg_path:")
+        lines.append("                _state['handled'] = False")
+        lines.append("                _state['last_error'] = 'path_not_found'")
+        lines.append("                _write_run_state('running', phase='waiting_webhook', method=_method, host=str(host), port=int(port), path=_path, timeout_seconds=_timeout_total, last_request_method=_req_method, last_request_path=_parsed.path, last_error='path_not_found')")
+        lines.append("                self._send_json(404, {'ok': False, 'error': 'Webhook path not found', 'expected_path': _path, 'received_path': _parsed.path})")
         lines.append("                _final_output = {'status': 'webhook_error', 'error': 'Webhook path not found'}")
         lines.append("                return")
+        lines.append("            _state['last_error'] = None")
+        lines.append("            _write_run_state('running', phase='webhook_request_received', method=_method, host=str(host), port=int(port), path=_path, timeout_seconds=_timeout_total, request_count=_state.get('request_count', 0), last_request_method=_req_method, last_request_path=_parsed.path)")
         lines.append("            _content_length_raw = self.headers.get('Content-Length', '0')")
         lines.append("            if _should_stop_run():")
         lines.append("                _trace.append({'id': webhook_node_id, 'type': 'webhook', 'label': webhook_node_label, 'status': 'stopped_current_execution', 'error': 'Run stopped by user', 'ts': time.time(), 'items_in': [], 'items_out': []})")
@@ -2021,12 +2088,12 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("            self._handle()")
         lines.append("        def log_message(self, _format, *_args):")
         lines.append("            return")
-        lines.append("    _server = _HTTPServer((str(host), int(port)), _OneShotWebhookHandler)")
+        lines.append("    _server = _HTTPServer((_listen_host, int(port)), _OneShotWebhookHandler)")
         lines.append("    _timeout_total = max(1, int(wait_seconds))")
         lines.append("    _server.timeout = 1")
         lines.append("    _deadline = time.time() + _timeout_total")
-        lines.append("    _write_run_state('running', phase='waiting_webhook', method=_method, host=str(host), port=int(port), path=_path, timeout_seconds=_timeout_total)")
-        lines.append("    print(f'Run webhook waiting on http://{host}:{port}{_path} (timeout: {_timeout_total}s)')")
+        lines.append("    _write_run_state('running', phase='waiting_webhook', method=_method, host=str(host), port=int(port), path=_path, listen_host=_listen_host, timeout_seconds=_timeout_total, request_count=0)")
+        lines.append("    print(f'Run webhook waiting on http://{host}:{port}{_path} (listen {_listen_host}) (timeout: {_timeout_total}s)')")
         lines.append("    while not _state['handled'] and time.time() < _deadline:")
         lines.append("        if _should_stop_run():")
         lines.append("            _trace.append({'id': webhook_node_id, 'type': 'webhook', 'label': webhook_node_label, 'status': 'stopped_current_execution', 'error': 'Run stopped by user', 'ts': time.time(), 'items_in': [], 'items_out': []})")
@@ -2034,6 +2101,7 @@ def generate_run_script(workflow_name: str, workflow_id: str, nodes: list[dict],
         lines.append("            _write_run_state('stopped', phase='stopped_by_user')")
         lines.append("            break")
         lines.append("        _server.handle_request()")
+        lines.append("        _write_run_state('running', phase='waiting_webhook', method=_method, host=str(host), port=int(port), path=_path, listen_host=_listen_host, timeout_seconds=_timeout_total, request_count=_state.get('request_count', 0), last_request_method=_state.get('last_request_method'), last_request_path=_state.get('last_request_path'), last_error=_state.get('last_error'))")
         lines.append("    if not _state['handled']:")
         lines.append("        if isinstance(_final_output, dict) and _final_output.get('status') == 'stopped_current_execution':")
         lines.append("            pass")

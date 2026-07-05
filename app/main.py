@@ -1,11 +1,13 @@
 import os
-from flask import Flask, send_from_directory, abort
+import time
+from flask import Flask, send_from_directory, abort, g, request
+from app.paths import get_data_dir, get_output_dir
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DIST_DIR = os.path.join(STATIC_DIR, "dist")
-DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "data")
-OUTPUT_DIR = os.path.join(os.path.dirname(BASE_DIR), "output")
+DATA_DIR = get_data_dir()
+OUTPUT_DIR = get_output_dir()
 
 # Ensure required directories exist
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -14,6 +16,32 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 app.config["DATA_DIR"] = DATA_DIR
 app.config["OUTPUT_DIR"] = OUTPUT_DIR
+
+
+def _http_log_enabled() -> bool:
+    return os.getenv("WBUI_HTTP_LOG", "1") != "0"
+
+
+@app.before_request
+def _start_request_timer():
+    if _http_log_enabled():
+        g._request_start = time.perf_counter()
+
+
+@app.after_request
+def _log_request(response):
+    if _http_log_enabled():
+        started = getattr(g, "_request_start", None)
+        elapsed_ms = 0.0
+        if started is not None:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+        print(
+            f"[wbui] {request.method} {request.path} -> {response.status_code} ({elapsed_ms:.1f} ms)"
+        )
+    return response
+
+print(f"[wbui] Data directory: {DATA_DIR}")
+print(f"[wbui] Output directory: {OUTPUT_DIR}")
 
 # Register blueprints
 from app.api.workflows import workflows_bp
@@ -52,4 +80,4 @@ def spa_index():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=True, port=5007)
