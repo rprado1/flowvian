@@ -4,6 +4,10 @@ Visual tool for creating workflows and compiling them as Windows `.exe` executab
 
 Design the flow by dragging nodes onto an drag-style canvas, configure each step, and generate a standalone `.exe` with one click.
 
+<p align="center">
+    <img src="captures/app.png"  style="width:80%; max-width:800px; min-width:200px;" alt="Workflow Builder">
+</p>
+
 ---
 
 ## Tech stack
@@ -69,14 +73,14 @@ Migration note:
 
 The application supports the following environment variables.
 
-| Variable | Description | Default |
-| --- | --- | --- |
-| `WBUI_PORT` | Server port used by `wbui start` when `-p` is not provided. | `5007` |
-| `WBUI_DATA_DIR` | Custom data directory (SQLite files and workflow metadata). | OS-specific user directory |
-| `WBUI_OUTPUT_DIR` | Custom output directory (generated scripts/build artifacts/logs). | OS-specific user directory |
-| `WBUI_USE_FLASK_DEV_SERVER` | Use Flask development server (`1`) instead of Waitress. | `0` (Waitress) |
-| `WBUI_HTTP_LOG` | HTTP request logging toggle (`1` enabled, `0` disabled). | `1` |
-| `WBUI_METADATA_1` | Master key for encrypting/decrypting secret values in workflow config. Required when using encrypted secrets. | Not set |
+| Variable                    | Description                                                                                                   | Default                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------- | -------------------------- |
+| `WBUI_PORT`                 | Server port used by `wbui start` when `-p` is not provided.                                                   | `5007`                     |
+| `WBUI_DATA_DIR`             | Custom data directory (SQLite files and workflow metadata).                                                   | OS-specific user directory |
+| `WBUI_OUTPUT_DIR`           | Custom output directory (generated scripts/build artifacts/logs).                                             | OS-specific user directory |
+| `WBUI_USE_FLASK_DEV_SERVER` | Use Flask development server (`1`) instead of Waitress.                                                       | `0` (Waitress)             |
+| `WBUI_HTTP_LOG`             | HTTP request logging toggle (`1` enabled, `0` disabled).                                                      | `1`                        |
+| `WBUI_METADATA_1`           | Master key for encrypting/decrypting secret values in workflow config. Required when using encrypted secrets. | Not set                    |
 
 Examples:
 
@@ -202,15 +206,15 @@ This writes the bundle to `app/static/dist/`. Flask serves the assets via dedica
 
 ### Top bar
 
-| Element            | Description                                                                   |
-| ------------------ | ----------------------------------------------------------------------------- |
-| Workflow name      | Click to rename                                                               |
-| **Preview Code**   | Shows the generated Python code                                               |
-| **Save**           | Saves the graph manually (auto-save also runs 800 ms after any change)        |
-| **Export Template**| Exports current workflow graph as a reusable JSON template                     |
-| **Import Template**| Imports a template JSON and creates a new workspace from it                    |
-| **▶ Run**          | Executes the workflow and displays per-node input/output in the results panel |
-| **⚙ Generate EXE** | Compiles the workflow to a standalone `.exe` via PyInstaller                  |
+| Element             | Description                                                                   |
+| ------------------- | ----------------------------------------------------------------------------- |
+| Workflow name       | Click to rename                                                               |
+| **Preview Code**    | Shows the generated Python code                                               |
+| **Save**            | Saves the graph manually (auto-save also runs 800 ms after any change)        |
+| **Export Template** | Exports current workflow graph as a reusable JSON template                    |
+| **Import Template** | Imports a template JSON and creates a new workspace from it                   |
+| **▶ Run**           | Executes the workflow and displays per-node input/output in the results panel |
+| **⚙ Generate EXE**  | Compiles the workflow to a standalone `.exe` via PyInstaller                  |
 
 ### Left sidebar
 
@@ -252,12 +256,12 @@ while True:
 
 Assigns key=value pairs to the workflow context.
 
-| Field  | Description                                  |
-| ------ | -------------------------------------------- |
-| key    | Valid Python variable name                   |
-| scope  | `Local` (default) or `Global`               |
-| mode   | `Literal`, `Template (${VAR})`, or `Path`   |
-| value  | Source value (typed by configured `type`)    |
+| Field | Description                               |
+| ----- | ----------------------------------------- |
+| key   | Valid Python variable name                |
+| scope | `Local` (default) or `Global`             |
+| mode  | `Literal`, `Template (${VAR})`, or `Path` |
+| value | Source value (typed by configured `type`) |
 
 ```python
 my_variable = 'value'
@@ -317,7 +321,7 @@ Combines multiple incoming branches explicitly using strategy `append`.
 | ------------------- | --------------------------------------------------------------- |
 | Strategy            | Fixed to `append`                                               |
 | Branches to combine | Number of incoming handles required (`branch_count`, minimum 2) |
-| Output property     | Variable name where appended items are stored (`output_var`)   |
+| Output property     | Variable name where appended items are stored (`output_var`)    |
 
 Notes:
 
