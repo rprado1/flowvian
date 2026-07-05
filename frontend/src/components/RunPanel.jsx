@@ -91,6 +91,45 @@ function fmtIfEvaluations(debug) {
   );
 }
 
+function fmtHttpRequestDetails(trace) {
+  if (!trace || trace.type !== 'http_request') return null;
+
+  const itemsOut = Array.isArray(trace.items_out) ? trace.items_out : [];
+  if (!itemsOut.length) return null;
+
+  const sample = itemsOut.find(item => item && typeof item === 'object') || null;
+  if (!sample) return null;
+
+  const method = String(sample.http_method || '').toUpperCase();
+  const params = sample.http_request_params;
+  const bodyJson = sample.http_request_body_json;
+
+  if (method === 'GET' && (params == null || (typeof params === 'object' && Object.keys(params).length === 0))) {
+    return null;
+  }
+  if (method === 'POST' && (bodyJson == null || String(bodyJson).trim() === '')) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 rounded border border-border p-2 bg-muted/30 text-[11px] space-y-1">
+      <div className="font-semibold">HTTP Request Sent</div>
+      {method === 'GET' && params != null && (
+        <div>
+          <span className="text-muted-foreground">Params: </span>
+          <code className="run-ctx">{valueToText(params)}</code>
+        </div>
+      )}
+      {method === 'POST' && bodyJson != null && (
+        <div>
+          <span className="text-muted-foreground">Body JSON: </span>
+          <code className="run-ctx">{String(bodyJson)}</code>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function RunPanel({ traces, output, finalOutput, onClose }) {
   const [copiedKey, setCopiedKey] = useState('');
 
@@ -252,6 +291,7 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
                 <TableCell className="text-xs align-top max-w-[420px] break-all whitespace-normal">{fmtItems(tr.items_in)}</TableCell>
                 <TableCell className="text-xs align-top max-w-[420px] break-all whitespace-normal">
                   {fmtItems(tr.items_out)}
+                  {fmtHttpRequestDetails(tr)}
                   {tr.type === 'if' && fmtIfEvaluations(tr.debug)}
                   {tr.error && (
                     <span className={`block ${isStopped ? 'text-amber-700' : 'text-destructive'}`}>{tr.error}</span>

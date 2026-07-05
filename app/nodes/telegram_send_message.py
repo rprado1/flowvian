@@ -33,6 +33,10 @@ class TelegramSendMessageNode(BaseNode):
         if not message:
             errors.append("telegram_send_message: message cannot be empty")
 
+        ssl_mode = str(self.config.get("ssl_mode", "strict")).strip().lower() or "strict"
+        if ssl_mode not in ("strict", "insecure"):
+            errors.append("telegram_send_message: ssl_mode must be strict or insecure")
+
         output_var = str(self.config.get("output_var", "telegram_result")).strip()
         if not output_var:
             errors.append("telegram_send_message: output_var cannot be empty")
@@ -53,6 +57,7 @@ class TelegramSendMessageNode(BaseNode):
         chat_id = str(self.config.get("chat_id", "${TELEGRAM_CHAT_ID}")).strip() or "${TELEGRAM_CHAT_ID}"
         message = str(self.config.get("message", "")).strip()
         disable_notification = bool(self.config.get("disable_notification", False))
+        ssl_mode = str(self.config.get("ssl_mode", "strict")).strip().lower() or "strict"
         output_var = str(self.config.get("output_var", "telegram_result")).strip() or "telegram_result"
 
         lines = [
@@ -62,8 +67,9 @@ class TelegramSendMessageNode(BaseNode):
             f"_tg_chat_id_t = {chat_id!r}",
             f"_tg_message_t = {message!r}",
             f"_tg_disable_notification = {disable_notification!r}",
+            f"_tg_ssl_mode = {ssl_mode!r}",
             f"_tg_output_var = {output_var!r}",
-            "_out[_tg_output_var] = {'ok': False, 'status_code': None, 'telegram_ok': None, 'message_id': None, 'chat_id': None, 'response': None, 'error_message': None}",
+            "_out[_tg_output_var] = {'ok': False, 'status_code': None, 'telegram_ok': None, 'message_id': None, 'chat_id': None, 'response': None, 'error_message': None, 'tls_mode': _tg_ssl_mode}",
             "try:",
             "    _tg_base_url = _resolve_template(_tg_base_url_t, _item).rstrip('/')",
             "    _tg_access_token = _resolve_template(_tg_access_token_t, _item).strip()",
@@ -92,6 +98,7 @@ class TelegramSendMessageNode(BaseNode):
             "        headers=_tg_headers,",
             "        body_obj=_tg_body,",
             "        timeout_seconds=60,",
+            "        ssl_mode=_tg_ssl_mode,",
             "    )",
             "",
             "    _tg_response = _tg_result.get('response_body')",
@@ -128,9 +135,10 @@ class TelegramSendMessageNode(BaseNode):
             "        'chat_id': _tg_chat_id_resp,",
             "        'response': _tg_response,",
             "        'error_message': _tg_error,",
+            "        'tls_mode': _tg_ssl_mode,",
             "    }",
             "except Exception as _tg_ex:",
-            "    _out[_tg_output_var] = {'ok': False, 'status_code': None, 'telegram_ok': None, 'message_id': None, 'chat_id': None, 'response': None, 'error_message': str(_tg_ex)}",
+            "    _out[_tg_output_var] = {'ok': False, 'status_code': None, 'telegram_ok': None, 'message_id': None, 'chat_id': None, 'response': None, 'error_message': str(_tg_ex), 'tls_mode': _tg_ssl_mode}",
         ]
 
         include_flag = self.config.get("include_other_input_fields", False)

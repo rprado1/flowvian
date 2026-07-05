@@ -11,10 +11,11 @@ import {
 import { useWorkflow } from '@/context/WorkflowContext';
 import { NODE_META } from '@/nodes';
 
-const CATEGORY_ORDER = ['Core', 'Date and Time', 'Data', 'Logic', 'Flow Control', 'Network'];
+const CATEGORY_ORDER = ['Triggers', 'Core', 'Date and Time', 'Data', 'Logic', 'Flow Control', 'Network'];
 
 const NODE_CATEGORIES = {
-  scheduler: 'Core',
+  webhook: 'Triggers',
+  scheduler: 'Triggers',
   set_variables: 'Data',
   get_current_date_utc: 'Date and Time',
   add_time_to_date: 'Date and Time',
@@ -43,12 +44,14 @@ export default function AppSidebar() {
   const {
     currentWfId,
     addNode,
+    nodes,
     recentNodeTypes,
     clearRecentNodeTypes,
   } = useWorkflow();
   const [query, setQuery] = useState('');
   const [showNodeModal, setShowNodeModal] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState(() => ({
+    Triggers: false,
     Core: false,
     'Date and Time': false,
     Data: false,
@@ -101,6 +104,13 @@ export default function AppSidebar() {
     return valid.map(type => ({ type, meta: NODE_META[type] }));
   }, [recentNodeTypes]);
 
+  const hasExistingTrigger = useMemo(() => {
+    return (nodes || []).some((node) => {
+      const type = String(node?.type || '');
+      return type === 'webhook' || type === 'scheduler';
+    });
+  }, [nodes]);
+
   const placeNode = (type) => {
     const ok = addNode(type);
     if (ok && showNodeModal) setShowNodeModal(false);
@@ -110,19 +120,34 @@ export default function AppSidebar() {
     setCollapsedCategories(prev => ({ ...prev, [name]: !prev[name] }));
   };
 
-  const renderNodeItem = ({ type, meta }, compact = false) => (
+  const renderNodeItem = ({ type, meta }, compact = false) => {
+    const isTrigger = type === 'webhook' || type === 'scheduler';
+    const triggerDisabled = isTrigger && hasExistingTrigger;
+    const disabled = !currentWfId || triggerDisabled;
+
+    return (
     <div
       key={type}
-      className={`palette-node ${compact ? 'palette-node-compact' : ''}`}
-      draggable
-      onDragStart={e => e.dataTransfer.setData('node-type', type)}
-      onDoubleClick={() => placeNode(type)}
+      className={`palette-node ${compact ? 'palette-node-compact' : ''} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      draggable={!disabled}
+      onDragStart={e => {
+        if (disabled) {
+          e.preventDefault();
+          return;
+        }
+        e.dataTransfer.setData('node-type', type);
+      }}
+      onDoubleClick={() => {
+        if (disabled) return;
+        placeNode(type);
+      }}
       role="button"
-      tabIndex={0}
+      tabIndex={disabled ? -1 : 0}
       onKeyDown={(e) => {
+        if (disabled) return;
         if (e.key === 'Enter') placeNode(type);
       }}
-      title="Drag to canvas or double click to add"
+      title={triggerDisabled ? 'Solo se permite un trigger por workflow' : 'Drag to canvas or double click to add'}
     >
       <span className="palette-node-icon">{meta.icon}</span>
       <div className="min-w-0">
@@ -132,7 +157,8 @@ export default function AppSidebar() {
         )}
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <aside
