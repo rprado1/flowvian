@@ -5,7 +5,7 @@ Visual tool for creating workflows and compiling them as Windows `.exe` executab
 Design the flow by dragging nodes onto an drag-style canvas, configure each step, and generate a standalone `.exe` with one click.
 
 <p align="center">
-    <img src="captures/app.png"  style="width:80%; max-width:800px; min-width:200px;" alt="Workflow Builder">
+    <img src="https://raw.githubusercontent.com/rprado1/workflow-exe/release/v1.0.0/captures/app.png"  style="width:80%; max-width:800px; min-width:200px;" alt="Workflow Builder">
 </p>
 
 ---
