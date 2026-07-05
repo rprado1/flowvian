@@ -19,23 +19,51 @@ Design the flow by dragging nodes onto an drag-style canvas, configure each step
 
 ## Requirements
 
-- **End users (npm global install):** Node.js 18+ and npm, Windows or Linux (x64)
+- **End users (PyPI install):** Python 3.9+ (Node.js is not required to run)
 - **Contributors (source code mode):** Python 3.9+, Node.js 18+, npm
 
 ---
 
-## Global npm installation (end users)
+## PyPI installation (end users)
 
-Install and run without Python:
+Install and run:
 
 ```bash
-npm install -g wbui
+pip install workflow-builder
 wbui start
+```
+
+Optional port:
+
+```bash
+wbui start -p 5007
 ```
 
 Open `http://localhost:5007` in your browser.
 
-`wbui start` runs the packaged runtime downloaded for your platform (Windows/Linux).
+Runtime note:
+
+- `wbui start` uses Waitress (production WSGI server) by default.
+- To force Flask development server for debugging, set `WBUI_USE_FLASK_DEV_SERVER=1`.
+- HTTP request logs are enabled by default. To disable them, set `WBUI_HTTP_LOG=0`.
+
+### Data and output directories
+
+By default, Workflow Builder stores runtime data in a per-user folder:
+
+- Windows: `%APPDATA%\\WorkflowBuilder\\data` and `%APPDATA%\\WorkflowBuilder\\output`
+- Linux: `~/.config/workflow-builder/data` and `~/.config/workflow-builder/output`
+- macOS: `~/Library/Application Support/WorkflowBuilder/data` and `~/Library/Application Support/WorkflowBuilder/output`
+
+You can override these locations with:
+
+- `WBUI_DATA_DIR`
+- `WBUI_OUTPUT_DIR`
+
+Migration note:
+
+- The app starts with a clean per-user storage model and does not auto-copy data from repo-local folders.
+- To force a clean start, remove `%APPDATA%\\WorkflowBuilder`.
 
 ---
 

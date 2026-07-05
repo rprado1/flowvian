@@ -1,171 +1,153 @@
-# Plan de publicacion en npm (`wbui`)
+# Plan de publicacion en PyPI (Workflow Builder)
 
 ## Objetivo
 
-Publicar el proyecto como paquete global de npm para que un usuario pueda:
+Publicar Workflow Builder como paquete de PyPI para que un usuario pueda instalar y ejecutar la aplicacion con comandos simples:
 
 ```bash
-npm install -g wbui
+pip install workflow-builder
 wbui start
 ```
 
-Y que `wbui start` levante la aplicacion en `http://localhost:5007`.
-
-Condicion obligatoria: el usuario final **no** debe instalar Python ni dependencias adicionales fuera de Node.js/npm.
-
-Contexto actual: el proyecto ya esta publicado en GitHub y existe tag/release base:
-
-- `v1.0.0-alpha.8`
-- `https://github.com/rprado1/workflow-exe/releases/tag/v1.0.0-alpha.8`
+Resultado esperado: `wbui start` inicia backend + frontend y deja la UI disponible en `http://localhost:5007` (o en el puerto definido con `-p`).
 
 ---
 
 ## Alcance del plan
 
-- Empaquetado del proyecto para distribucion por npm.
-- Comando CLI global `wbui`.
-- Subcomando `start` con puerto fijo `5007` (y opcionalmente configurable a futuro).
-- Flujo de build reproducible para generar artefactos.
-- Publicacion y versionado en npm.
-- Instalacion zero-deps para usuario final (sin Python, sin `pip`, sin venv).
-- Soporte multiplataforma para instalacion y ejecucion: Windows y Linux.
-- Proceso de release manual (sin GitHub Actions).
+- Empaquetado Python moderno con `pyproject.toml`.
+- Publicacion del paquete en PyPI (con validacion previa en TestPyPI).
+- Exposicion del CLI `wbui` mediante `project.scripts`.
+- Soporte de ejecucion `wbui start` con puerto opcional `-p`.
+- Inclusion de assets compilados del frontend dentro del paquete.
+- Flujo de release manual y repetible.
 
 Fuera de alcance inicial:
 
-- Instalador nativo (MSI/EXE installer) fuera de npm.
+- Distribucion como binario nativo para usuarios sin Python.
+- Instaladores nativos del sistema operativo.
 
 ---
 
-## Arquitectura propuesta de distribucion
+## Arquitectura de distribucion
 
-### Opcion recomendada (v1): un solo paquete npm + binarios por plataforma
+### Opcion recomendada (v1): paquete Python unico en PyPI
 
-1. Construir binarios nativos de la app backend para cada plataforma objetivo, con frontend ya compilado.
-2. Publicar un unico paquete npm `wbui` con CLI Node.js (`bin/wbui.js`).
-3. En instalacion (o prepack/release), seleccionar y descargar el binario segun `platform + arch` desde GitHub Releases.
-4. `wbui start` ejecuta el binario local y fuerza `PORT=5007`.
+1. Compilar frontend React con `npm run build`.
+2. Asegurar que el build final quede en `app/static/dist/`.
+3. Empaquetar codigo Python + assets frontend en wheel/sdist.
+4. Publicar en PyPI con entrypoint CLI.
+5. Ejecutar localmente con `wbui start`.
 
 Ventajas:
 
-- Usuario final no necesita Python instalado.
-- Usuario final no ejecuta `pip install` ni configura entorno virtual.
-- Experiencia simple con `npm install -g` en Windows y Linux.
-- Menor variabilidad de entorno.
+- Flujo estandar del ecosistema Python.
+- Menor complejidad operativa para v1.
+- Versionado y dependencias centralizados en PyPI.
 
-Riesgo:
+Limitacion conocida:
 
-- Complejidad operativa por builds manuales por plataforma.
-
-### Opcion alternativa: npm wrapper + Python local
-
-`wbui start` llama `python run.py`.
-
-No recomendada para v1 porque depende de Python/venv instalado y configurado en el equipo del usuario.
+- El usuario final necesita Python compatible instalado.
 
 ---
 
 ## Cambios tecnicos requeridos
 
-## 1) Ajustar puerto de arranque a 5007
-
-Archivos objetivo:
-
-- `run.py`
-- (opcional) `app/main.py` bloque `__main__`
+## 1) Definir metadatos y build system en `pyproject.toml`
 
 Acciones:
 
-- Cambiar puerto por defecto de `5000` a `5007` en `run.py`.
-- Recomendado: leer variable de entorno `PORT`, con fallback `5007`.
-- Mantener `debug=True` solo para entorno desarrollo; para release, evaluar modo no-debug.
+- Crear/actualizar `pyproject.toml` con `setuptools.build_meta`.
+- Definir `project.name` (recomendado: `workflow-builder`).
+- Definir `version`, `description`, `readme`, `requires-python`.
+- Declarar dependencias runtime del backend.
+- Exponer script de consola:
+
+```toml
+[project.scripts]
+wbui = "run:cli"
+```
+
+## 2) Estandarizar CLI en `run.py`
+
+Estado actual:
+
+- `run.py` solo ejecuta desde `if __name__ == "__main__":`.
+- No hay parser CLI ni subcomandos.
+
+Acciones:
+
+- Agregar `main(port=None)` para iniciar Flask.
+- Agregar `cli()` con `argparse`.
+- Definir subcomando `start`.
+- Soportar puerto opcional solo como `-p` (sin `--port` ni `--p`).
+
+Uso esperado:
+
+```bash
+wbui start
+wbui start -p 5007
+```
+
+Regla CLI acordada:
+
+- Parametro de puerto: solo `-p`.
+- No habilitar alias largos.
+
+## 2.1) Persistencia portable por usuario
+
+Acciones:
+
+- Mover almacenamiento por defecto fuera del repo hacia carpetas por usuario.
+- Definir rutas por OS:
+  - Windows: `%APPDATA%/WorkflowBuilder`
+  - Linux: `~/.config/workflow-builder`
+  - macOS: `~/Library/Application Support/WorkflowBuilder`
+- Mantener overrides por variables de entorno:
+  - `WBUI_DATA_DIR`
+  - `WBUI_OUTPUT_DIR`
+- No realizar migracion automatica desde rutas del repo para mantener instalacion limpia en PyPI.
 
 Resultado esperado:
 
-- `wbui start` inicia en `5007` consistentemente.
-
-## 2) Crear CLI de npm (`wbui`)
-
-Estructura sugerida:
-
-```text
-package.json
-bin/
-  wbui.js
-scripts/
-  build-npm.js (opcional)
-```
-
-`package.json` minimo:
-
-- `name: "wbui"`
-- `version: "0.1.0"`
-- `bin: { "wbui": "bin/wbui.js" }`
-- `files` incluyendo solo runtime necesario.
-- `os` restringido a Windows si el binario lo requiere.
-
-Comportamiento CLI v1:
-
-- `wbui start`: ejecuta app en puerto `5007`.
-- `wbui --help`: muestra comandos.
-- `wbui --version`: version del paquete.
+- `wbui start` usa una ubicacion persistente y consistente, independiente del directorio desde donde se ejecuta.
 
 ## 3) Build frontend para distribucion
 
 Acciones:
 
-- Ejecutar `frontend/npm run build` en pipeline de release.
-- Verificar que `app/static/dist/` se incluya dentro del artefacto final.
-- Confirmar que rutas SPA siguen funcionando en ejecutable.
+- Ejecutar `npm install` y `npm run build` en `frontend/` antes de empaquetar.
+- Validar que Flask sirva correctamente el build desde `app/static/dist/`.
 
-## 4) Generar binario distribuible
-
-Acciones:
-
-- Crear script de build de release (ej: `scripts/build_release.bat` o Python).
-- Ejecutar build para cada plataforma objetivo (Windows/Linux) y arquitectura soportada.
-- Publicar assets por plataforma en GitHub Release (nombres estables por `platform-arch`).
-- Configurar resolucion automatica de asset en instalacion npm.
-
-Verificaciones:
-
-- Binario inicia Flask correctamente.
-- Sirve frontend compilado.
-- No depende de rutas absolutas del repo.
-
-## 5) Empaquetado npm
+## 4) Incluir assets frontend en wheel/sdist
 
 Acciones:
 
-- Crear `package.json` en raiz del repo o en carpeta `npm/` dedicada.
-- Definir `prepack` para:
-  1. Build frontend.
-  2. Build/publicacion de binarios por plataforma.
-  3. Resolucion de runtime segun OS/arquitectura.
-- Asegurar que el paquete publicado contenga todo lo necesario para ejecutar `wbui start` sin descargar dependencias externas en postinstall.
-- Probar localmente con `npm pack`.
+- Agregar `MANIFEST.in` con inclusion recursiva de `app/static/dist`.
+- Configurar `tool.setuptools.package-data` para incluir estaticos en wheel.
 
-Validacion local:
+Validacion:
 
-```bash
-npm pack
-npm install -g ./wbui-0.1.0.tgz
-wbui start
-```
+- Tras instalar wheel, los assets existen en `site-packages`.
+- La UI abre sin depender del codigo fuente de `frontend/`.
 
-## 6) Publicacion en npm
+## 5) Flujo de build y publicacion
 
-Checklist:
+Acciones:
 
-- Verificar disponibilidad del nombre `wbui`.
-- Iniciar sesion: `npm login`.
-- Publicar: `npm publish --access public`.
-- Probar desde entorno limpio:
+- Instalar herramientas de release: `build` y `twine`.
+- Generar artefactos con `python -m build`.
+- Validar metadata con `twine check dist/*`.
+- Publicar en TestPyPI.
+- Publicar en PyPI.
 
-```bash
-npm install -g wbui
-wbui start
-```
+## 6) Documentacion de instalacion
+
+Acciones:
+
+- Actualizar `README.md` con instalacion desde PyPI.
+- Documentar ejecucion con `wbui start` y `wbui start -p 5007`.
+- Agregar troubleshooting basico.
 
 ---
 
@@ -173,37 +155,37 @@ wbui start
 
 ## Fase 0 - Pre-flight
 
-- Confirmar que el nombre `wbui` esta disponible en npm.
-- Definir politica de versionado (SemVer).
-- Definir matriz de soporte v1: Windows y Linux (x64 como minimo).
-- Confirmar proceso manual de release (sin GitHub Actions).
-- Tomar como referencia el release existente `v1.0.0-alpha.8` para trazabilidad del primer publish en npm.
+- Confirmar disponibilidad del nombre `workflow-builder` en PyPI.
+- Definir `requires-python` segun soporte real.
+- Definir politica de versionado.
+- Crear API token para TestPyPI/PyPI.
 
-## Fase 1 - Preparar runtime
+## Fase 1 - Preparar empaquetado
 
-- Ajustar puerto por defecto a `5007`.
-- Asegurar que frontend build queda embebido.
-- Verificar ejecucion local sin dependencias del entorno dev.
-- Definir convencion de nombres de assets por plataforma/arquitectura.
+- Crear/ajustar `pyproject.toml`.
+- Implementar `run:cli` con subcomando `start` y opcion `-p`.
+- Definir inclusion de estaticos (`MANIFEST.in` + package-data).
+- Implementar rutas de datos/salida por usuario + migracion inicial.
 
-## Fase 2 - CLI npm
+## Fase 2 - Validacion local
 
-- Crear `package.json` y `bin/wbui.js`.
-- Implementar comando `start`.
-- Agregar `help/version`.
+- Build frontend.
+- Instalar localmente con `pip install -e .`.
+- Ejecutar `wbui start` y `wbui start -p 5007`.
+- Verificar que los datos se creen/lean desde la carpeta de usuario.
+- Probar `python -m build` y revisar wheel/sdist.
 
-## Fase 3 - Proceso de release manual
+## Fase 3 - Publicacion controlada
 
-- Ejecutar manualmente build frontend + binarios Windows/Linux + empaquetado npm.
-- Subir manualmente assets al GitHub Release correspondiente.
-- Generar `.tgz` con `npm pack`.
-- Ejecutar smoke tests de instalacion global.
+- Subir a TestPyPI.
+- Probar instalacion desde TestPyPI en entorno limpio.
+- Ajustar problemas de metadata/dependencias/archivos.
 
-## Fase 4 - Publicacion
+## Fase 4 - Publicacion oficial
 
-- Publicar `0.1.0`.
-- Validar instalacion real desde npm registry.
-- Documentar troubleshooting inicial.
+- Publicar version estable en PyPI.
+- Verificar instalacion real con `pip install workflow-builder`.
+- Publicar notas de release.
 
 ---
 
@@ -211,76 +193,77 @@ wbui start
 
 Se considera completado cuando:
 
-1. `npm install -g wbui` finaliza sin errores en Windows y Linux limpios.
-2. `wbui start` levanta el servicio en `http://localhost:5007` en ambas plataformas.
-3. La UI carga correctamente y responde API basica.
-4. `wbui --help` y `wbui --version` funcionan.
-5. El usuario final no necesita instalar Python, `pip`, ni otras librerias del sistema para ejecutar `wbui`.
-6. El proceso de release esta documentado y repetible.
+1. `pip install workflow-builder` finaliza sin errores en entorno limpio con Python soportado.
+2. `wbui start` inicia la app local y expone la UI en `http://localhost:5007`.
+3. `wbui start -p 5007` funciona y sobrescribe el puerto por defecto.
+4. Frontend compilado carga correctamente desde el paquete instalado.
+5. El proceso de release queda documentado y es repetible.
 
 ---
 
 ## Riesgos y mitigaciones
 
-- Tamano grande del paquete npm por binario:
-  - Mitigar excluyendo archivos no esenciales con `files`/`.npmignore`.
-- Incompatibilidad por arquitectura (x64 vs arm64):
-  - Publicar matriz de soporte y resolver asset por `platform-arch`.
-- Puerto ocupado (5007):
-  - v1: mensaje claro de error.
-  - v1.1: fallback automatico o flag `--port`.
-- Falsos positivos de antivirus sobre binarios:
-  - Firmado de codigo y documentar hashes/checksums en roadmap.
-- Diferencias de libc en Linux:
-  - Generar build en entorno compatible (baseline glibc) y validar en distro objetivo.
+- Archivos estaticos faltantes en wheel:
+  - Mitigar con `MANIFEST.in`, `package-data` y validacion post-install.
+- Diferencias entre entorno dev e instalado:
+  - Mitigar con pruebas en venv limpio y rutas relativas basadas en paquete.
+- Conflictos de nombre en PyPI:
+  - Definir nombre alternativo antes del release.
+- Puerto ocupado:
+  - Mostrar mensaje claro y documentar uso de `-p`.
 
 ---
 
 ## Entregables
 
-- `package.json` para npm global package.
-- `bin/wbui.js` con comando `start`.
-- Script de release automatizado (build frontend + pyinstaller + pack).
-- README actualizado con instalacion por npm.
-- Checklist de publicacion y rollback basico.
+- `pyproject.toml` con metadata y `project.scripts`.
+- `MANIFEST.in` y configuracion de package-data.
+- `run.py` con `cli()` + subcomando `start` + opcion `-p`.
+- `README.md` actualizado para instalacion y uso desde PyPI.
+- Guia de release manual (TestPyPI -> PyPI).
 
 ---
 
 ## Comandos de validacion recomendados
 
 ```bash
-# Comandos para maintainers (release), no para usuario final
-
 # 1) Build frontend
-cd frontend && npm install && npm run build
+cd frontend
+npm install
+npm run build
 
-# 2) Build binario (segun script definido)
-python -m PyInstaller <spec_o_parametros>
+# 2) Volver a raiz del repositorio y validar import
+cd ..
+python -c "from app.main import app; print('OK')"
 
-# 3) Empaquetar npm
-npm pack
-
-# 4) Instalar paquete local generado
-npm install -g ./wbui-<version>.tgz
-
-# 5) Ejecutar CLI
+# 3) Instalar en modo editable y ejecutar CLI
+pip install -e .
 wbui start
+wbui start -p 5007
+
+# 4) Generar artefactos
+python -m build
+twine check dist/*
+
+# 5) Publicar en TestPyPI (primero)
+twine upload --repository testpypi dist/*
+
+# 6) Publicar en PyPI
+twine upload dist/*
 ```
 
-Validacion de experiencia final de usuario (equipo limpio):
+Validacion de experiencia final de usuario (entorno limpio):
 
 ```bash
-npm install -g wbui
+pip install workflow-builder
 wbui start
 ```
-
-Si estos dos comandos funcionan en equipos limpios de Windows y Linux sin Python instalado, se cumple el requisito principal de instalacion.
 
 ---
 
-## Roadmap posterior (v1.1+)
+## Mejoras recomendadas (v1.1+)
 
-- `wbui start --port <n>` para puerto configurable.
 - `wbui doctor` para diagnostico rapido (puerto, permisos, rutas).
-- Publicacion de binarios por plataforma con descarga dinamica.
-- Telemetria opcional y anonima (si aplica).
+- Apertura automatica del navegador al iniciar.
+- Carpeta de configuracion por sistema operativo para datos de usuario.
+- Publicacion adicional como ejecutable standalone para usuarios sin Python.
