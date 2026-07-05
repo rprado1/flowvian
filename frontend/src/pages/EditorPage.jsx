@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { api } from '@/api';
@@ -38,6 +38,7 @@ export default function EditorPage() {
   const [buildLog, setBuildLog] = useState(null);
   const [showBuildOptions, setShowBuildOptions] = useState(false);
   const [runStateMsg, setRunStateMsg] = useState('');
+  const runStateTimerRef = useRef(null);
 
   const ensureExecutableTrigger = () => {
     const diagnostics = getTriggerDiagnostics(nodes);
@@ -162,6 +163,28 @@ export default function EditorPage() {
     }
   };
 
+  const clearRunPolling = () => {
+    if (runStateTimerRef.current) {
+      window.clearInterval(runStateTimerRef.current);
+      runStateTimerRef.current = null;
+    }
+  };
+
+  const loadRunResultAndClose = async () => {
+    try {
+      const result = await api('GET', `/api/workflows/${workflowId}/run/result`);
+      setRunTraces(result.traces || []);
+      setRunOutput(result.output || '');
+      setRunFinalOutput(result.final_output || null);
+      setShowRun(true);
+    } catch {
+      // no-op: run result may not be available yet
+    }
+    setRunning(false);
+    setRunStateMsg('');
+    clearRunPolling();
+  };
+
   const handleRun = async () => {
     if (!workflowId) return toast.error('Open a workspace first');
     if (!ensureExecutableTrigger()) return;
@@ -170,29 +193,45 @@ export default function EditorPage() {
     setRunStateMsg('Starting run...');
     toast.info('Executing workflow…');
 
+    clearRunPolling();
+
+    let hasSeenRunningState = false;
+
     const pollState = async () => {
       try {
         const st = await api('GET', `/api/workflows/${workflowId}/run/state`);
         if (st?.status === 'running') {
+          hasSeenRunningState = true;
           if (st.phase === 'waiting_webhook') {
             const method = st.method || 'POST';
             const host = st.host || '127.0.0.1';
             const port = st.port || '';
             const path = st.path || '/webhook';
             setRunStateMsg(`Waiting webhook: ${method} http://${host}${port ? `:${port}` : ''}${path}`);
-          } else if (st.phase === 'executing_workflow') {
+          } else if (st.phase === 'executing_workflow' || st.phase === 'webhook_request_received') {
             setRunStateMsg('Webhook received, executing workflow...');
           } else {
             setRunStateMsg('Running...');
           }
+          return;
+        }
+
+        if (
+          hasSeenRunningState
+          && (st?.status === 'completed' || st?.status === 'error' || st?.status === 'stopped')
+        ) {
+          await loadRunResultAndClose();
         }
       } catch {
         // ignore state polling errors
       }
     };
 
-    const stateTimer = window.setInterval(pollState, 1000);
+    const timer = window.setInterval(pollState, 1000);
+    runStateTimerRef.current = timer;
     void pollState();
+
+    let keepPollingAfterRequest = false;
 
     try {
       const data = await api('POST', `/api/workflows/${workflowId}/run`);
@@ -203,11 +242,24 @@ export default function EditorPage() {
       if (data.error) toast.error('Execution finished with errors');
       else toast.success('Execution completed');
     } catch (e) {
-      toast.error(e.message);
+      const isConflict = e?.message === 'A run is already in progress for this workflow';
+      const isPortInUse = e?.detail?.phase === 'webhook_port_in_use';
+      if (isConflict) {
+        keepPollingAfterRequest = true;
+        setRunning(true);
+        setRunStateMsg('Re-attached to running workflow...');
+        toast.info('A run is already in progress. Re-attached to current run.');
+      } else if (isPortInUse) {
+        toast.error(e.message);
+      } else {
+        toast.error(e.message);
+      }
     } finally {
-      window.clearInterval(stateTimer);
-      setRunning(false);
-      setRunStateMsg('');
+      if (!keepPollingAfterRequest) {
+        clearRunPolling();
+        setRunning(false);
+        setRunStateMsg('');
+      }
     }
   };
 
@@ -221,6 +273,14 @@ export default function EditorPage() {
       toast.error(e.message);
     }
   };
+
+  useEffect(() => {
+    return () => {
+      if (runStateTimerRef.current) {
+        window.clearInterval(runStateTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleBuild = async (debug = false) => {
     if (!workflowId) return toast.error('Open a workspace first');

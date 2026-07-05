@@ -8,6 +8,7 @@ import threading
 import time
 import traceback
 import uuid
+import socket
 
 from flask import Blueprint, jsonify, current_app, request, send_file
 from app.db.manager import get_workflow_meta, get_workflow_graph
@@ -212,6 +213,32 @@ def run_workflow(workflow_id):
 
     graph = get_workflow_graph(data_dir(), workflow_id)
 
+    webhook_nodes = [n for n in graph.get("nodes", []) if str(n.get("type") or "") == "webhook"]
+    if webhook_nodes:
+        webhook_config = webhook_nodes[0].get("config") if isinstance(webhook_nodes[0].get("config"), dict) else {}
+        raw_port = webhook_config.get("port", 8000)
+        raw_host = str(webhook_config.get("host", "127.0.0.1") or "127.0.0.1").strip() or "127.0.0.1"
+        try:
+            webhook_port = int(raw_port)
+        except Exception:
+            webhook_port = 8000
+
+        if webhook_port > 0:
+            host_candidates = ["127.0.0.1"]
+            if raw_host not in host_candidates:
+                host_candidates.append(raw_host)
+            port_busy = any(_is_port_open(h, webhook_port) for h in host_candidates)
+            if port_busy:
+                return jsonify({
+                    "error": (
+                        f"Webhook port {webhook_port} is already in use. "
+                        "Stop the existing listener/process or change webhook port in node config."
+                    ),
+                    "phase": "webhook_port_in_use",
+                    "port": webhook_port,
+                    "host": raw_host,
+                }), 409
+
     try:
         script = generate_run_script(meta["name"], workflow_id, graph["nodes"], graph["edges"])
     except ValueError as exc:
@@ -225,6 +252,18 @@ def run_workflow(workflow_id):
     final_output_path = os.path.join(wf_output_dir, "_final_output.json")
     stop_path = os.path.join(wf_output_dir, "_stop.json")
     state_path = os.path.join(wf_output_dir, "_run_state.json")
+
+    if os.path.exists(trace_path):
+        try:
+            os.remove(trace_path)
+        except OSError:
+            pass
+
+    if os.path.exists(final_output_path):
+        try:
+            os.remove(final_output_path)
+        except OSError:
+            pass
 
     if os.path.exists(stop_path):
         try:
@@ -398,21 +437,105 @@ def stop_run_workflow(workflow_id):
 def run_state_workflow(workflow_id):
     wf_output_dir = os.path.join(output_dir(), workflow_id)
     state_path = os.path.join(wf_output_dir, "_run_state.json")
+    trace_path = os.path.join(wf_output_dir, "_trace.json")
+    final_output_path = os.path.join(wf_output_dir, "_final_output.json")
+
+    active_run = False
+    with _RUN_LOCK:
+        state_entry = _RUN_STATE.get(workflow_id)
+        if state_entry is not None:
+            proc = state_entry.get("process")
+            if proc is not None and proc.poll() is None:
+                active_run = True
+            else:
+                _RUN_STATE.pop(workflow_id, None)
+
+    has_result = os.path.exists(trace_path) or os.path.exists(final_output_path)
 
     if os.path.exists(state_path):
         try:
             with open(state_path, "r", encoding="utf-8") as f:
                 state = json.load(f)
             if isinstance(state, dict):
+                status = str(state.get("status") or "").strip().lower()
+                phase = str(state.get("phase") or "").strip().lower()
+                if status == "running" and not active_run:
+                    if has_result:
+                        return jsonify({"status": "completed", "phase": "done", "inferred": True})
+                    return jsonify({"status": "idle", "inferred": True})
+                if status == "running" and phase == "waiting_webhook":
+                    listen_host = str(state.get("listen_host") or "").strip() or "0.0.0.0"
+                    host = str(state.get("host") or "").strip() or "127.0.0.1"
+                    raw_port = state.get("port", 0)
+                    try:
+                        port = int(raw_port)
+                    except Exception:
+                        port = 0
+                    port_open = port > 0 and (_is_port_open("127.0.0.1", port) or _is_port_open(host, port))
+                    state["listener_alive"] = bool(port_open)
+                    if not port_open and not has_result:
+                        return jsonify({
+                            "status": "error",
+                            "phase": "webhook_listener_unavailable",
+                            "error": "Webhook listener is not reachable on configured port",
+                            "host": host,
+                            "listen_host": listen_host,
+                            "port": port,
+                        })
                 return jsonify(state)
         except Exception:
             pass
 
-    with _RUN_LOCK:
-        if workflow_id in _RUN_STATE:
-            return jsonify({"status": "running", "phase": "starting"})
+    if active_run:
+        return jsonify({"status": "running", "phase": "starting"})
+
+    if has_result:
+        return jsonify({"status": "completed", "phase": "done", "inferred": True})
 
     return jsonify({"status": "idle"})
+
+
+@builder_bp.route("/<workflow_id>/run/result", methods=["GET"])
+def run_result_workflow(workflow_id):
+    meta = get_workflow_meta(data_dir(), workflow_id)
+    if not meta:
+        return jsonify({"error": "not found"}), 404
+
+    wf_output_dir = os.path.join(output_dir(), workflow_id)
+    trace_path = os.path.join(wf_output_dir, "_trace.json")
+    final_output_path = os.path.join(wf_output_dir, "_final_output.json")
+
+    if not os.path.exists(trace_path) and not os.path.exists(final_output_path):
+        return jsonify({"error": "run result not available"}), 404
+
+    traces = []
+    final_output = None
+
+    if os.path.exists(trace_path):
+        try:
+            with open(trace_path, "r", encoding="utf-8") as f:
+                loaded_traces = json.load(f)
+            if isinstance(loaded_traces, list):
+                traces = loaded_traces
+        except Exception:
+            traces = []
+
+    if os.path.exists(final_output_path):
+        try:
+            with open(final_output_path, "r", encoding="utf-8") as f:
+                final_output = json.load(f)
+        except Exception:
+            final_output = None
+
+    output = None
+    if isinstance(final_output, dict):
+        output = json.dumps(final_output, ensure_ascii=False)
+
+    return jsonify({
+        "traces": traces,
+        "output": output,
+        "final_output": final_output,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -486,3 +609,11 @@ def _run_build(job_id: str, workflow_id: str, safe_name: str,
 def _safe_filename(name: str) -> str:
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
     return safe.strip("_") or "workflow"
+
+
+def _is_port_open(host: str, port: int, timeout: float = 0.3) -> bool:
+    try:
+        with socket.create_connection((host, int(port)), timeout=timeout):
+            return True
+    except Exception:
+        return False
