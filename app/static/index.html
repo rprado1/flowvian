@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Workflow EXE Builder</title>
+  <link rel="stylesheet" href="/static/css/drawflow.min.css" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<!-- ============================================================
+     Top Bar
+     ============================================================ -->
+<div id="topbar">
+  <span class="brand">⚡ WorkflowEXE</span>
+  <span class="wf-name" title="Click to rename">—</span>
+  <div class="spacer"></div>
+  <button class="btn btn-outline btn-sm" id="btn-preview" title="Preview generated Python code">Preview Code</button>
+  <button class="btn btn-outline btn-sm" id="btn-save"    title="Save workflow">Save</button>
+  <button class="btn btn-primary"        id="btn-run"     title="Run workflow and see results">▶ Run</button>
+  <button class="btn btn-success"        id="btn-build"   title="Compile workflow to .exe">⚙ Generate EXE</button>
+</div>
+
+<!-- ============================================================
+     Main Layout
+     ============================================================ -->
+<div id="layout">
+
+  <!-- Left Sidebar -->
+  <aside id="sidebar">
+
+    <!-- Workflows section -->
+    <div class="sidebar-section">
+      <h3>Workflows</h3>
+      <button class="btn btn-primary btn-sm" id="btn-new-wf" style="width:100%">+ New Workflow</button>
+    </div>
+    <div id="workflow-list"></div>
+
+    <!-- Node palette -->
+    <div id="node-palette">
+      <h3>Nodes</h3>
+
+      <div class="palette-node" draggable="true" data-type="scheduler">
+        <span class="node-icon">⏱</span>
+        <div>
+          <div style="font-weight:600">Scheduler</div>
+          <div style="font-size:11px;color:var(--text-muted)">Time interval trigger</div>
+        </div>
+      </div>
+
+      <div class="palette-node" draggable="true" data-type="set_variables">
+        <span class="node-icon">📦</span>
+        <div>
+          <div style="font-weight:600">Set Variables</div>
+          <div style="font-size:11px;color:var(--text-muted)">Assign key=value pairs</div>
+        </div>
+      </div>
+
+      <div class="palette-node" draggable="true" data-type="get_current_date_utc">
+        <span class="node-icon">📅</span>
+        <div>
+          <div style="font-weight:600">Get Current Date UTC</div>
+          <div style="font-size:11px;color:var(--text-muted)">datetime.now(UTC)</div>
+        </div>
+      </div>
+
+      <div class="palette-node" draggable="true" data-type="add_time_to_date">
+        <span class="node-icon">⏩</span>
+        <div>
+          <div style="font-weight:600">Add Time to Date</div>
+          <div style="font-size:11px;color:var(--text-muted)">date + timedelta</div>
+        </div>
+      </div>
+
+      <div class="palette-node" draggable="true" data-type="subtract_time_from_date">
+        <span class="node-icon">⏪</span>
+        <div>
+          <div style="font-weight:600">Subtract Time from Date</div>
+          <div style="font-size:11px;color:var(--text-muted)">date - timedelta</div>
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Canvas -->
+  <div id="canvas-wrap">
+    <div id="drawflow"></div>
+  </div>
+
+  <!-- Right: Properties Panel -->
+  <aside id="props-panel" class="hidden">
+    <div id="props-header">
+      <h3 id="props-title">Properties</h3>
+      <span id="props-close">×</span>
+    </div>
+    <div id="props-body"></div>
+  </aside>
+
+</div><!-- /layout -->
+
+<!-- ============================================================
+     Run Results Panel
+     ============================================================ -->
+<div id="run-panel" class="hidden">
+  <div id="run-panel-header">
+    <h3>▶ Execution Results</h3>
+    <span id="run-panel-close">×</span>
+  </div>
+  <div id="run-panel-body">
+    <table id="run-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Node</th>
+          <th>Type</th>
+          <th>Time</th>
+          <th>Status</th>
+          <th>Input</th>
+          <th>Output</th>
+        </tr>
+      </thead>
+      <tbody id="run-table-body">
+      </tbody>
+    </table>
+    <pre id="run-output" style="display:none"></pre>
+  </div>
+</div>
+
+<!-- ============================================================
+     Modals
+     ============================================================ -->
+
+<!-- New Workflow -->
+<div id="modal-new-wf" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>New Workflow</h2>
+    <div class="prop-group">
+      <label>Name</label>
+      <input type="text" id="modal-new-wf-name" placeholder="My Workflow" />
+    </div>
+    <div class="prop-group">
+      <label>Description (optional)</label>
+      <input type="text" id="modal-new-wf-desc" placeholder="What does this workflow do?" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="modal-new-wf-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-new-wf-create">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename Workflow -->
+<div id="modal-rename" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>Rename Workflow</h2>
+    <div class="prop-group">
+      <label>New name</label>
+      <input type="text" id="modal-rename-input" />
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="modal-rename-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-rename-ok">Rename</button>
+    </div>
+  </div>
+</div>
+
+<!-- Delete Confirm -->
+<div id="modal-del" class="modal-backdrop hidden">
+  <div class="modal">
+    <h2>Delete Workflow</h2>
+    <p style="margin-bottom:12px;color:var(--text-muted)">
+      Are you sure you want to delete <strong id="modal-del-name"></strong>?<br/>
+      This action cannot be undone.
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-outline" id="modal-del-cancel">Cancel</button>
+      <button class="btn btn-danger"  id="modal-del-ok">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Build Log / Script Preview -->
+<div id="modal-log" class="modal-backdrop hidden">
+  <div class="modal" style="max-width:680px">
+    <h2 id="modal-log-title">Build Log</h2>
+    <pre id="build-log-content"></pre>
+    <div class="modal-actions">
+      <button class="btn btn-success" id="modal-log-download" style="display:none">⬇ Download EXE</button>
+      <button class="btn btn-outline" id="modal-log-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- ============================================================
+     Scripts
+     ============================================================ -->
+<script src="/static/js/drawflow.min.js"></script>
+<script src="/static/js/nodes/scheduler.js"></script>
+<script src="/static/js/nodes/set_variables.js"></script>
+<script src="/static/js/nodes/get_current_date.js"></script>
+<script src="/static/js/nodes/add_time_to_date.js"></script>
+<script src="/static/js/nodes/subtract_time_from_date.js"></script>
+<script src="/static/js/app.js"></script>
+
+</body>
+</html>

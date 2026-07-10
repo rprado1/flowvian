@@ -1,0 +1,291 @@
+import json
+import re
+from urllib.parse import urlparse
+
+from typing import Optional, Tuple
+
+from app.nodes.base import BaseNode
+
+
+_URL_TEMPLATE_PREFIX_RE = re.compile(r"^(?:\$\{[A-Za-z_][A-Za-z0-9_]*\}|#\{[A-Za-z_][A-Za-z0-9_]*\}|@\{[A-Za-z_][A-Za-z0-9_]*\})")
+_PLACEHOLDER_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _starts_with_url_template(value: str) -> bool:
+    return _URL_TEMPLATE_PREFIX_RE.match(value) is not None
+
+
+def _read_placeholder(text: str, start: int) -> Tuple[Optional[str], int]:
+    if text.startswith("${", start):
+        prefix_len = 2
+    elif text.startswith("#{", start):
+        prefix_len = 2
+    elif text.startswith("@{", start):
+        prefix_len = 2
+    else:
+        return None, start
+
+    end = text.find("}", start + prefix_len)
+    if end < 0:
+        return None, start
+
+    name = text[start + prefix_len:end]
+    if not _PLACEHOLDER_NAME_RE.fullmatch(name):
+        return None, start
+
+    return text[start : end + 1], end + 1
+
+
+def _quote_unquoted_placeholders(raw_json: str) -> str:
+    out: list[str] = []
+    i = 0
+    in_string = False
+    escaped = False
+
+    while i < len(raw_json):
+        ch = raw_json[i]
+
+        if in_string:
+            out.append(ch)
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+            i += 1
+            continue
+
+        if ch == '"':
+            in_string = True
+            out.append(ch)
+            i += 1
+            continue
+
+        placeholder, next_i = _read_placeholder(raw_json, i)
+        if placeholder is not None:
+            out.append(json.dumps(placeholder))
+            i = next_i
+            continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out)
+
+
+class HttpRequestNode(BaseNode):
+    NODE_TYPE = "http_request"
+
+    def validate(self) -> list[str]:
+        errors: list[str] = []
+
+        method = str(self.config.get("method", "GET")).upper()
+        if method not in ("GET", "POST"):
+            errors.append("http_request: method must be GET or POST")
+
+        url = str(self.config.get("url", "")).strip()
+        if not url:
+            errors.append("http_request: url cannot be empty")
+        elif not (
+            url.startswith("http://")
+            or url.startswith("https://")
+            or _starts_with_url_template(url)
+        ):
+            errors.append(
+                "http_request: url must start with http:// or https://, or with a template like ${VAR} / #{SECRET} / @{GLOBAL}"
+            )
+
+        query_params = self.config.get("query_params", [])
+        if not isinstance(query_params, list):
+            errors.append("http_request: query_params must be a list")
+        else:
+            for idx, item in enumerate(query_params):
+                if not isinstance(item, dict):
+                    errors.append(f"http_request: query param item {idx} must be an object")
+                    continue
+                key = str(item.get("key", "")).strip()
+                if not key:
+                    errors.append(f"http_request: query param item {idx} has empty key")
+
+        raw_timeout = self.config.get("timeout_seconds", 30)
+        try:
+            timeout = float(raw_timeout)
+            if timeout < 1 or timeout > 120:
+                errors.append("http_request: timeout_seconds must be between 1 and 120")
+        except (TypeError, ValueError):
+            errors.append("http_request: timeout_seconds must be a number")
+
+        output_var = str(self.config.get("output_var", "http_result")).strip()
+        if not output_var:
+            errors.append("http_request: output_var cannot be empty")
+        elif not output_var.isidentifier():
+            errors.append(f"http_request: output_var '{output_var}' is not a valid Python identifier")
+
+        headers = self.config.get("headers", [])
+        if isinstance(headers, dict):
+            for key, value in headers.items():
+                if not str(key).strip():
+                    errors.append("http_request: header key cannot be empty")
+                if value is None:
+                    errors.append(f"http_request: header '{key}' has null value")
+        elif isinstance(headers, list):
+            for idx, item in enumerate(headers):
+                if not isinstance(item, dict):
+                    errors.append(f"http_request: header item {idx} must be an object")
+                    continue
+                key = str(item.get("key", "")).strip()
+                if not key:
+                    errors.append(f"http_request: header item {idx} has empty key")
+                if item.get("value") is None:
+                    errors.append(f"http_request: header item {idx} has null value")
+        else:
+            errors.append("http_request: headers must be a list or object")
+
+        if method == "POST":
+            body_raw_json = str(self.config.get("body_raw_json", "")).strip()
+            if not body_raw_json:
+                errors.append("http_request: body_raw_json is required for POST")
+            else:
+                try:
+                    json.loads(_quote_unquoted_placeholders(body_raw_json))
+                except Exception:
+                    errors.append(
+                        "http_request: body_raw_json must be valid JSON after placeholder replacement"
+                    )
+        else:
+            parsed = urlparse(url)
+            if parsed.query:
+                errors.append("http_request: GET URL must not include query string; use query_params")
+
+        return errors
+
+    def to_code(self, indent: int = 0) -> str:
+        method = str(self.config.get("method", "GET")).upper()
+        url = str(self.config.get("url", "")).strip()
+        timeout_seconds = float(self.config.get("timeout_seconds", 30) or 30)
+        body_raw_json = str(self.config.get("body_raw_json", "")).strip()
+        query_params_config = self.config.get("query_params", [])
+        headers_config = self.config.get("headers", [])
+        output_var = str(self.config.get("output_var", "http_result")).strip() or "http_result"
+        body_template_obj = None
+
+        if method == "POST" and body_raw_json:
+            body_template_obj = json.loads(_quote_unquoted_placeholders(body_raw_json))
+
+        if isinstance(query_params_config, list):
+            normalized_query_params = []
+            for item in query_params_config:
+                if not isinstance(item, dict):
+                    continue
+                key = str(item.get("key", "")).strip()
+                if not key:
+                    continue
+                value = item.get("value", "")
+                normalized_query_params.append({"key": key, "value": "" if value is None else str(value)})
+        else:
+            normalized_query_params = []
+
+        # Normalize headers config to list[dict{key,value}] for deterministic codegen.
+        if isinstance(headers_config, dict):
+            normalized_headers = [
+                {"key": str(key), "value": "" if value is None else str(value)}
+                for key, value in headers_config.items()
+            ]
+        elif isinstance(headers_config, list):
+            normalized_headers = []
+            for item in headers_config:
+                if not isinstance(item, dict):
+                    continue
+                key = str(item.get("key", "")).strip()
+                if not key:
+                    continue
+                value = item.get("value", "")
+                normalized_headers.append({"key": key, "value": "" if value is None else str(value)})
+        else:
+            normalized_headers = []
+
+        lines = [
+            "# HTTP Request",
+            f"_http_method = {method!r}",
+            f"_http_url_template = {url!r}",
+            f"_http_headers_template = {normalized_headers!r}",
+            f"_http_timeout_seconds = {timeout_seconds!r}",
+            f"_http_body_template = {body_template_obj!r}",
+            f"_http_query_params_template = {normalized_query_params!r}",
+            f"_http_output_var = {output_var!r}",
+            "_out['http_method'] = _http_method",
+            "_out['http_ok'] = False",
+            "_out['http_status_code'] = None",
+            "_out['http_response_headers'] = {}",
+            "_out['http_response_body'] = None",
+            "_out['http_error_message'] = None",
+            "_out['http_request_params'] = None",
+            "_out['http_request_body_json'] = None",
+            "_out[_http_output_var] = {'ok': False, 'status_code': None, 'response_headers': {}, 'response_body': None, 'error_message': None, 'url_resolved': None}",
+            "try:",
+            "    _resolved_url = _resolve_template(_http_url_template, _item)",
+            "    if _http_method == 'GET' and _http_query_params_template:",
+            "        _resolved_params = []",
+            "        _resolved_params_map = {}",
+            "        for _qp in _http_query_params_template:",
+            "            _qp_key = _qp.get('key', '').strip()",
+            "            if not _qp_key:",
+            "                continue",
+            "            _qp_val = _resolve_template(str(_qp.get('value', '')), _item)",
+            "            _resolved_params.append((_qp_key, _qp_val))",
+            "            _resolved_params_map[_qp_key] = _qp_val",
+            "        if _resolved_params:",
+            "            _query_txt = _urlencode(_resolved_params, doseq=True)",
+            "            if '?' in _resolved_url:",
+            "                _resolved_url = _resolved_url + '&' + _query_txt",
+            "            else:",
+            "                _resolved_url = _resolved_url + '?' + _query_txt",
+            "            _out['http_request_params'] = _resolved_params_map",
+            "    _validate_target_url(_resolved_url)",
+            "    _resolved_headers = {}",
+            "    for _hdr in _http_headers_template:",
+            "        _hdr_key = _hdr.get('key', '').strip()",
+            "        if not _hdr_key:",
+            "            continue",
+            "        _resolved_headers[_hdr_key] = _resolve_template(str(_hdr.get('value', '')), _item)",
+            "",
+            "    _body_obj = None",
+            "    if _http_method == 'POST':",
+            "        _body_obj = _resolve_json_template(_http_body_template, _item)",
+            "        _out['http_request_body_json'] = json.dumps(_body_obj if _body_obj is not None else {}, ensure_ascii=False)",
+            "",
+            "    _result = _perform_http_request(",
+            "        method=_http_method,",
+            "        url=_resolved_url,",
+            "        headers=_resolved_headers,",
+            "        body_obj=_body_obj,",
+            "        timeout_seconds=_http_timeout_seconds,",
+            "    )",
+            "",
+            "    _out['http_url_resolved'] = _resolved_url",
+            "    _out['http_ok'] = _result['ok']",
+            "    _out['http_status_code'] = _result['status_code']",
+            "    _out['http_response_headers'] = _result['response_headers']",
+            "    _out['http_response_body'] = _result['response_body']",
+            "    _out['http_error_message'] = _result['error_message']",
+            "    _out[_http_output_var] = {",
+            "        'ok': _result['ok'],",
+            "        'status_code': _result['status_code'],",
+            "        'response_headers': _result['response_headers'],",
+            "        'response_body': _result['response_body'],",
+            "        'error_message': _result['error_message'],",
+            "        'url_resolved': _resolved_url,",
+            "    }",
+            "except Exception as _http_ex:",
+            "    _out['http_url_resolved'] = None",
+            "    _out['http_ok'] = False",
+            "    _out['http_status_code'] = None",
+            "    _out['http_response_headers'] = {}",
+            "    _out['http_response_body'] = None",
+            "    _out['http_error_message'] = str(_http_ex)",
+            "    _out[_http_output_var] = {'ok': False, 'status_code': None, 'response_headers': {}, 'response_body': None, 'error_message': str(_http_ex), 'url_resolved': None}",
+        ]
+
+        include_flag = self.config.get("include_other_input_fields", False)
+        return self._emit_item_loop("\n".join(lines), indent, include_flag)

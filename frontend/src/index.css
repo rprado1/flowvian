@@ -1,0 +1,285 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* ── Paleta dark del proyecto mapeada a tokens shadcn (valores HSL) ── */
+    --background:         222 47% 11%;    /* #1a1a2e */
+    --foreground:         210 20% 88%;    /* #e0e0e0 */
+
+    --card:               222 47%  9%;    /* #16213e */
+    --card-foreground:    210 20% 88%;
+
+    --popover:            214 75% 22%;    /* #0f3460 */
+    --popover-foreground: 210 20% 88%;
+
+    --primary:            349 76% 57%;    /* #e94560 */
+    --primary-foreground: 0   0% 100%;
+
+    --secondary:          214 75% 22%;    /* #0f3460 */
+    --secondary-foreground: 210 20% 88%;
+
+    --muted:              218 38% 18%;
+    --muted-foreground:   213 20% 63%;    /* #8899aa */
+
+    --accent:             218 38% 20%;
+    --accent-foreground:  210 20% 88%;
+
+    --destructive:        349 76% 57%;    /* #e94560 */
+    --destructive-foreground: 0 0% 100%;
+
+    --border:             221 38% 25%;    /* #2a3a5a */
+    --input:              221 38% 25%;
+    --ring:               349 76% 57%;
+
+    --radius:             0.5rem;
+
+    /* ── Tokens extra no cubiertos por shadcn ── */
+    --accent-green:       #1db954;
+    --accent-yellow:      #f5a623;
+    --accent-hover:       #c73652;
+    --node-header:        #0f3460;
+    --bg-dark:            #1a1a2e;
+    --bg-panel:           #16213e;
+    --bg-card:            #0f3460;
+    --topbar-h:           52px;
+    --sidebar-w:          260px;
+    --props-w:            280px;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
+  #root {
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+}
+
+/* ── React Flow node overrides ── */
+.react-flow__node {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  min-width: 200px;
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+.react-flow__node.selected {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.4);
+}
+.react-flow__handle {
+  background: hsl(var(--primary));
+  border: 2px solid hsl(var(--background));
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.react-flow__handle:hover {
+  background: hsl(var(--primary) / 0.8);
+}
+.react-flow__edge-path {
+  stroke: hsl(var(--primary) / 0.6);
+  stroke-width: 2;
+}
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: hsl(var(--primary));
+}
+.react-flow__background {
+  background-color: hsl(var(--background));
+}
+.react-flow__controls button {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
+  fill: hsl(var(--foreground));
+}
+.react-flow__controls button:hover {
+  background: hsl(var(--muted));
+}
+.react-flow__minimap {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+}
+
+/* ── Node card internal structure ── */
+.node-title-box {
+  background: var(--node-header);
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  border-radius: calc(var(--radius)) calc(var(--radius)) 0 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: hsl(var(--foreground));
+}
+.node-body {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ── Layout ── */
+#layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* ── Canvas dot grid ── */
+.react-flow__pane {
+  background-image: radial-gradient(hsl(var(--border) / 0.4) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* ── Props panel ── */
+#props-panel {
+  width: var(--props-w);
+  flex-shrink: 0;
+  background: hsl(var(--card));
+  border-left: 1px solid hsl(var(--border));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width 0.2s ease;
+}
+#props-panel.hidden-panel {
+  width: 0;
+}
+
+/* ── Run panel ── */
+#run-panel {
+  height: 240px;
+  background: hsl(var(--card));
+  border-top: 1px solid hsl(var(--border));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: height 0.2s ease;
+}
+#run-panel.hidden-panel {
+  height: 0;
+}
+
+/* ── Prop form groups ── */
+.prop-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.prop-group label {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* ── Variable rows (Set Variables node) ── */
+.var-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.var-row input {
+  flex: 1;
+}
+
+/* ── Palette node items ── */
+.palette-node {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover));
+  cursor: grab;
+  user-select: none;
+  font-size: 12px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.palette-node-compact {
+  padding: 6px 8px;
+  gap: 8px;
+}
+.palette-node:hover {
+  border-color: hsl(var(--primary) / 0.6);
+  background: hsl(var(--muted));
+}
+.palette-node:active {
+  cursor: grabbing;
+}
+.palette-node-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+/* ── Workflow list items ── */
+.wf-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 13px;
+  color: hsl(var(--foreground));
+  transition: background 0.15s;
+}
+.wf-item:hover {
+  background: hsl(var(--muted));
+}
+.wf-item.active {
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
+}
+
+/* ── Build log pre ── */
+.build-log-pre {
+  background: #0d0d1a;
+  color: #b0ffb0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  padding: 12px;
+  border-radius: var(--radius);
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── Run results ctx cells ── */
+.run-ctx code {
+  font-size: 11px;
+  font-family: ui-monospace, Consolas, monospace;
+  background: hsl(var(--muted));
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.run-ok td { color: hsl(var(--foreground)); }
+.run-err td { color: hsl(var(--destructive)); }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground)); }

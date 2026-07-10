@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "workflow-builder"
+version = "1.0.0-rc.2"
+description = "Workflow Builder with Flask backend and React frontend"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "flask==3.1.1",
+    "waitress>=3.0.0",
+    "pyinstaller==6.11.1",
+]
+
+[project.scripts]
+wbui = "run:cli"
+
+[tool.setuptools]
+include-package-data = true
+py-modules = ["run"]
+
+[tool.setuptools.packages.find]
+include = ["app", "app.*"]
+
+[tool.setuptools.package-data]
+app = ["static/dist/**"]
