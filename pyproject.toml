@@ -3,9 +3,9 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "workflow-builder"
-version = "1.0.0-rc.2"
-description = "Workflow Builder with Flask backend and React frontend"
+name = "flowvian"
+version = "1.0.0"
+description = "Visual workflow builder for automation with OpenAI Responses integration, featuring a Flask backend, React UI, and Windows executable export."
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
