@@ -1,11 +1,11 @@
-# WorkflowEXE Builder
+# Flowvian
 
-Visual tool for creating workflows and compiling them as Windows `.exe` executables.
+Visual workflow builder for automation with OpenAI Responses integration, featuring a Flask backend, React UI, and Windows executable export.
 
-Design the flow by dragging nodes onto an drag-style canvas, configure each step, and generate a standalone `.exe` with one click.
+[https://github.com/rprado1/workflow-exe](https://github.com/rprado1/workflow-exe)
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/rprado1/workflow-exe/release/v1.0.0/captures/app.png"  style="width:80%; max-width:800px; min-width:200px;" alt="Workflow Builder">
+    <img src="https://raw.githubusercontent.com/rprado1/workflow-exe/release/v1.0.0/captures/app.png"  style="width:80%; max-width:800px; min-width:200px;" alt="Flowvian">
 </p>
 
 ---
@@ -33,7 +33,7 @@ Design the flow by dragging nodes onto an drag-style canvas, configure each step
 Install and run:
 
 ```bash
-pip install workflow-builder
+pip install flowvian
 wbui start
 ```
 
@@ -53,7 +53,7 @@ Runtime note:
 
 ### Data and output directories
 
-By default, Workflow Builder stores runtime data in a per-user folder:
+By default, Flowvian stores runtime data in a per-user folder:
 
 - Windows: `%APPDATA%\\WorkflowBuilder\\data` and `%APPDATA%\\WorkflowBuilder\\output`
 - Linux: `~/.config/workflow-builder/data` and `~/.config/workflow-builder/output`
