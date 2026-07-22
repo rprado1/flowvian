@@ -130,6 +130,46 @@ function fmtHttpRequestDetails(trace) {
   );
 }
 
+function toEpochSeconds(value) {
+  if (typeof value === 'number' && !Number.isNaN(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const numeric = Number(trimmed);
+    if (!Number.isNaN(numeric)) return numeric;
+    const parsedMs = Date.parse(trimmed);
+    if (!Number.isNaN(parsedMs)) return parsedMs / 1000;
+  }
+  return null;
+}
+
+function formatTraceTime(ts) {
+  if (typeof ts !== 'number' || Number.isNaN(ts)) return '—';
+  return new Date(ts * 1000).toLocaleString('en-US');
+}
+
+function resolveTraceTimes(trace) {
+  const fallbackTs =
+    toEpochSeconds(trace?.ts)
+    ?? toEpochSeconds(trace?.timestamp)
+    ?? toEpochSeconds(trace?.time)
+    ?? null;
+
+  const startTs =
+    toEpochSeconds(trace?.start_ts)
+    ?? toEpochSeconds(trace?.started_at)
+    ?? toEpochSeconds(trace?.start)
+    ?? fallbackTs;
+
+  const endTs =
+    toEpochSeconds(trace?.end_ts)
+    ?? toEpochSeconds(trace?.finished_at)
+    ?? toEpochSeconds(trace?.end)
+    ?? fallbackTs;
+
+  return { startTs, endTs };
+}
+
 export default function RunPanel({ traces, output, finalOutput, onClose }) {
   const [copiedKey, setCopiedKey] = useState('');
 
@@ -260,7 +300,7 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
               <TableHead className="w-8 text-muted-foreground">#</TableHead>
               <TableHead className="w-40 text-muted-foreground">Node</TableHead>
               <TableHead className="w-24 text-muted-foreground">Type</TableHead>
-              <TableHead className="w-24 text-muted-foreground">Time</TableHead>
+              <TableHead className="w-36 text-muted-foreground">Time</TableHead>
               <TableHead className="w-24 text-muted-foreground">Status</TableHead>
               <TableHead className="w-[30%] text-muted-foreground">Items In</TableHead>
               <TableHead className="w-[30%] text-muted-foreground">Items Out</TableHead>
@@ -277,13 +317,15 @@ export default function RunPanel({ traces, output, finalOutput, onClose }) {
             {traces.map((tr, i) => {
               const isStopped = tr.status === 'stopped_current_execution';
               const rowClass = isStopped ? 'run-ok' : (tr.status !== 'ok' ? 'run-err' : 'run-ok');
+              const { startTs, endTs } = resolveTraceTimes(tr);
               return (
               <TableRow key={i} className={`border-border ${rowClass}`}>
                 <TableCell className="text-xs">{i + 1}</TableCell>
                 <TableCell className="text-xs font-semibold break-words">{tr.label || tr.id || '?'}</TableCell>
                 <TableCell className="text-xs text-muted-foreground break-words">{tr.type || '?'}</TableCell>
                 <TableCell className="text-xs text-muted-foreground break-words">
-                  {tr.ts ? new Date(tr.ts * 1000).toLocaleTimeString() : '—'}
+                  <span className="block">Start: {formatTraceTime(startTs)}</span>
+                  <span className="block">End: {formatTraceTime(endTs)}</span>
                 </TableCell>
                 <TableCell className="text-xs break-words">
                   {tr.status === 'ok' ? '✅' : (isStopped ? '🛑' : '❌')} {tr.status}

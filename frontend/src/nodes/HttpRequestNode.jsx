@@ -4,6 +4,11 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { AlertTriangle } from 'lucide-react';
+
+function hasLocalhost(value) {
+  return typeof value === 'string' && value.toLowerCase().includes('localhost');
+}
 
 export default function HttpRequestNode({ data }) {
   const method = (data.config?.method || 'GET').toUpperCase();
@@ -24,6 +29,7 @@ export function HttpRequestPropsForm({ config, onChange }) {
   const method = (config.method || 'GET').toUpperCase();
   const headers = Array.isArray(config.headers) ? config.headers : [];
   const queryParams = Array.isArray(config.query_params) ? config.query_params : [];
+  const hasLocalhostUrl = hasLocalhost(config.url || '');
 
   const setHeader = (idx, field, value) => {
     const next = headers.map((h, i) => (i === idx ? { ...h, [field]: value } : h));
@@ -88,6 +94,16 @@ export function HttpRequestPropsForm({ config, onChange }) {
         <p className="text-xs text-muted-foreground mt-1">
           Supports URL templates, e.g. ${'{'}MT5_API_URL{'}'}/market-data/bars.
         </p>
+        {hasLocalhostUrl ? (
+          <div className="mt-2 rounded-md border border-amber-500/50 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-300">
+            <div className="flex items-start gap-1.5">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Detected <code>localhost</code> in URL. In workflow runtime this can add delay; use <code>127.0.0.1</code> to avoid IPv6 fallback.
+              </span>
+            </div>
+          </div>
+        ) : null}
         {method === 'GET' && (
           <p className="text-xs text-muted-foreground mt-1">
             For GET, define query string in Query Params section.
